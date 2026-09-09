@@ -1,14 +1,14 @@
 # Omarchy on a OnePlus 6T (fajita)
 
-Android is gone. The phone runs Arch Linux ARM, Hyprland 0.56 and Omarchy 4
-Quattro. The kernel is postmarketOS's prebuilt `linux-postmarketos-qcom-sdm845`
-6.16.7 with the fajita device tree. Everything above it is Arch, installed with
-pacman.
+This replaces Android on a OnePlus 6T with Arch Linux ARM, Hyprland 0.56 and
+Omarchy 4 Quattro. The kernel is postmarketOS's prebuilt
+`linux-postmarketos-qcom-sdm845` 6.16.7 with the fajita device tree, and
+everything above it is Arch installed with pacman.
 
 I haven't forked Omarchy or Arch. This assembles them: build scripts, the config
-that lands on the phone, and a few patches to Omarchy's touch handling. The
-patches are kept re-appliable because package upgrades overwrite them. Status is
-at the bottom.
+that lands on the phone, and a few patches to Omarchy's touch handling, which
+are kept re-appliable because package upgrades overwrite them. What works and
+what doesn't is at the bottom.
 
 ## Layout
 
@@ -44,8 +44,9 @@ at the bottom.
 - Key combos: fastboot = from off with cable OUT, Power+VolUp+VolDown, release
   Power at the vibrate, keep the volumes until "FastBoot Mode". Both volumes
   with the cable IN = EDL (9008). Exit EDL: unplug, VolUp+Power 20 s.
-- Once Linux runs, the boot partition can be rewritten over ssh:
-  `dd if=boot.img of=/dev/disk/by-partlabel/boot_b`. No more key dance.
+- Once Linux runs, the boot partition can be rewritten over ssh with
+  `dd if=boot.img of=/dev/disk/by-partlabel/boot_b`, so the button combination
+  is only needed for the first flash.
 - pacman 7's Landlock sandbox fails on this kernel: `DisableSandbox` in pacman.conf.
 - No RTC: enable NTP (`timedatectl set-ntp true`) or set the date over ssh.
 - Omarchy migration `1788124236` disables sshd at first session start if it
@@ -122,8 +123,8 @@ Working: boots unattended into the Omarchy session, bar, menu (touch), on-screen
 keyboard, terminal, theme, GPU acceleration, audio, Wi-Fi, USB networking, ssh,
 screenshots (`scripts/shot.sh`).
 
-Not working: Bluetooth (firmware loads, HCI reset times out), lock screen,
-cellular. Camera and sensors untouched.
+Not working: Bluetooth (firmware loads, HCI reset times out), lock screen and
+cellular. I haven't tried the camera or sensors.
 
 Tested only on a OnePlus 6T (fajita) with Omarchy 4.0.2 and Hyprland 0.56.2.
 The OnePlus 6 (enchilada) shares the SoC and should need only a DTB change.
