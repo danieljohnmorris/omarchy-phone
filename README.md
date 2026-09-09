@@ -19,8 +19,9 @@ Omarchy publishes x86_64 builds only. There is an aarch64 repo at
 `pkgs.omarchy.org/aarch64` but it holds one package, and DHH has said ARM support
 is coming.
 
-Of the 217 packages in the x86_64 repo, 33 are `arch=any` and install anywhere.
-That third is what the phone runs. The rest are compiled for Intel.
+When I counted, at 4.0.3, the x86_64 repo held 217 packages and 33 were
+`arch=any`. Ten of those are what the phone installs: the shell, the menus, the
+Neovim config, the fonts and the icon theme. The rest are labelled x86_64.
 
 Some are labelled x86_64 without containing any compiled code. Omarchy 4.0.2
 shipped `omarchy` and `omarchy-settings` as `arch=any`; 4.0.3 labels them x86_64,

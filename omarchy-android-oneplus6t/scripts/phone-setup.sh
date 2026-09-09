@@ -93,7 +93,7 @@ scp -q "$HERE/phone/fajita-second-bar" $PH:.local/bin/
 scp -q "$HERE/phone/waybar.service" $PH:.config/systemd/user/
 ssh $PH 'chmod +x ~/.local/bin/fajita-second-bar
   systemctl --user daemon-reload; systemctl --user enable waybar.service
-  # bigger type: Omarchy defaults are laptop-sized and unreadable on a 5.5in panel
+  # bigger type: Omarchy defaults are laptop-sized and unreadable on a 6.4in panel
   omarchy-display-text-size 18 >/dev/null 2>&1 || true'
 
 
