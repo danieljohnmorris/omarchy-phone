@@ -29,6 +29,15 @@ phone/fajita-osk-toggle:.local/bin/fajita-osk-toggle
 phone/fajita-second-bar:.local/bin/fajita-second-bar
 phone/hooks/post-boot:.config/omarchy/hooks/post-boot
 phone/apply-shell-patches.sh:.local/bin/apply-shell-patches.sh
+phone/fajita-bar-order:.local/bin/fajita-bar-order
+phone/fajita-omarchy-update:.local/bin/fajita-omarchy-update
+phone/fajita-reboot-bootloader:.local/bin/fajita-reboot-bootloader
+phone/bar-order.service:.config/systemd/user/bar-order.service
+phone/omarchy-update.service:.config/systemd/user/omarchy-update.service
+phone/omarchy-update.timer:.config/systemd/user/omarchy-update.timer
+phone/omarchy-menu.jsonc:.config/omarchy/extensions/omarchy-menu.jsonc
+omarchy-packages.txt:.local/share/fajita/omarchy-packages.txt
+repack-noarch.sh:.local/bin/repack-noarch.sh
 "
 
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
@@ -56,7 +65,7 @@ while IFS=: read -r repo remote; do
 done <<< "$MAP"
 
 # root-owned files, fetched separately
-for pair in "phone/ttfx:/usr/local/bin/ttfx" "phone/proxy.sh:/etc/profile.d/proxy.sh"; do
+for pair in "phone/ttfx:/usr/local/bin/ttfx" "phone/proxy.sh:/etc/profile.d/proxy.sh" "phone/50-fajita-power.rules:/etc/polkit-1/rules.d/50-fajita-power.rules"; do
   repo=${pair%%:*}; remote=${pair#*:}
   if ssh "$PH" "cat $remote" > "$tmp/f" 2>/dev/null; then
     if diff -q "$HERE/$repo" "$tmp/f" >/dev/null 2>&1; then same=$((same+1)); else

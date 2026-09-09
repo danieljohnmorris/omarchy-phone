@@ -1,0 +1,12 @@
+#!/bin/bash
+# Reboot straight into the phone's fastboot bootloader from the running system.
+#
+# The PMIC's power-on block in the device tree advertises `mode-bootloader`
+# and `mode-recovery`, so the kernel's reboot-mode driver writes the magic the
+# bootloader reads on the next start. This replaces the three-button hold,
+# which needs the cable out and lands in EDL if timed wrong.
+#
+# Usage: fajita-reboot-bootloader [recovery]
+mode=${1:-bootloader}
+# systemctl writes /run/systemd/reboot-param itself, which needs root
+exec sudo -n systemctl reboot --reboot-argument="$mode"

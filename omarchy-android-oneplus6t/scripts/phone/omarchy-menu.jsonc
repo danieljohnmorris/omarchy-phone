@@ -1,0 +1,10 @@
+{
+  // ~/.config/omarchy/extensions/omarchy-menu.jsonc on the phone.
+  // Merged over Omarchy's default menu by id; these rows join System.
+  "system.bootloader": {
+    "icon": "󰚥",
+    "label": "Reboot to bootloader",
+    "description": "Fastboot mode, for flashing from the host",
+    "action": "fajita-reboot-bootloader"
+  }
+}

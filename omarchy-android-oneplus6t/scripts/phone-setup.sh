@@ -112,4 +112,10 @@ echo "== reboot/shutdown from the menu without a polkit password prompt"
 scp -q "$HERE/phone/50-fajita-power.rules" $PH:/tmp/
 ssh $PH 'sudo install -m644 -o root -g root /tmp/50-fajita-power.rules /etc/polkit-1/rules.d/50-fajita-power.rules; sudo systemctl restart polkit'
 
+
+echo "== menu extension: Reboot to bootloader (replaces the three-button hold)"
+scp -q "$HERE/phone/fajita-reboot-bootloader" $PH:.local/bin/
+ssh $PH 'mkdir -p ~/.config/omarchy/extensions; chmod +x ~/.local/bin/fajita-reboot-bootloader'
+scp -q "$HERE/phone/omarchy-menu.jsonc" $PH:.config/omarchy/extensions/omarchy-menu.jsonc
+
 echo "phone setup done"
