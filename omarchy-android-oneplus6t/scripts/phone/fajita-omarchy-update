@@ -62,9 +62,10 @@ done < <(grep -vE '^\s*#|^\s*$' "$LIST")
 if [ ${#to_install[@]} -eq 0 ]; then echo "up to date"; exit 0; fi
 
 sudo pacman -Udd --noconfirm "${to_install[@]}" || exit 1
-# omarchy-tzupdate and friends must be root-owned or sudo refuses them
-pacman -Qlq omarchy omarchy-settings 2>/dev/null | while read -r f; do
-  [ -e "$f" ] && [ "$(stat -c %u "$f")" != "0" ] && printf '%s\0' "$f"
-done | sudo xargs -0 -r chown -h root:root
+# Files must be root-owned or sudo refuses its drop-ins. Sweep as root: the
+# phone user cannot even stat inside /etc/sudoers.d, so a user-side check
+# silently misses exactly the files that matter.
+sudo find / -xdev -not -path '/home/*' -not -uid 0 -not -gid 0 -not -path '/proc/*' 2>/dev/null \
+  | sudo xargs -r chown -h root:root
 "$HOME/.local/bin/apply-shell-patches.sh"
 echo "upgraded: ${to_install[*]##*/}"
