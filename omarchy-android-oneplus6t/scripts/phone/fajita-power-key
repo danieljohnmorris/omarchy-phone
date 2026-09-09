@@ -1,0 +1,13 @@
+#!/bin/bash
+# Power key: wake the panel if it is off, otherwise open Omarchy's power menu.
+# Replaces Omarchy's XF86PowerOff bind (utilities.lua) via bindings.lua.
+# key_press_enables_dpms is off in looknfeel.lua so the press reaches here with
+# the panel still reporting off; otherwise Hyprland would wake it first and the
+# menu would open on top of every wake.
+export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] || \
+  export HYPRLAND_INSTANCE_SIGNATURE=$(hyprctl instances -j | python3 -c 'import sys,json;print(json.load(sys.stdin)[0]["instance"])')
+if hyprctl monitors -j | python3 -c 'import sys,json;sys.exit(0 if all(m["dpmsStatus"] for m in json.load(sys.stdin)) else 1)'; then
+  exec omarchy-menu toggle system
+fi
+exec hyprctl dispatch 'hl.dsp.dpms("on")' >/dev/null

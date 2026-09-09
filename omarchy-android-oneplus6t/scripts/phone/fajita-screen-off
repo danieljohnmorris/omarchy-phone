@@ -1,0 +1,10 @@
+#!/bin/bash
+# Turn the panel off in place of suspend. Suspend is masked on the phone
+# (s2idle never resumes), so Menu > Suspend is wired here instead. The power
+# key (fajita-power-key) turns it back on; touch does not, so it will not wake
+# in a pocket. Hyprland 0.56: hyprctl dispatch takes Lua.
+export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] || \
+  export HYPRLAND_INSTANCE_SIGNATURE=$(hyprctl instances -j | python3 -c 'import sys,json;print(json.load(sys.stdin)[0]["instance"])')
+omarchy-menu close >/dev/null 2>&1
+exec hyprctl dispatch 'hl.dsp.dpms("off")' >/dev/null

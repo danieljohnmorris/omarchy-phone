@@ -50,6 +50,11 @@ what doesn't is at the bottom.
 - **Omarchy floats are 875x600.** On a 540-wide phone the update prompt's
   "press any key" sat off the right edge. `looknfeel.lua` re-sizes the
   `floating-window` tag and the About window to 518x640.
+- **Suspend never resumes, so Menu > Suspend is "Screen off".** The
+  `system.suspend` menu row is overridden to `fajita-screen-off` (DPMS off),
+  and `bindings.lua` rebinds the power key to `fajita-power-key`: wake if the
+  panel is off, otherwise Omarchy's power menu. `key_press_enables_dpms` and
+  `mouse_move_enables_dpms` are off so only the power key wakes it.
 - **Fastboot on a Mac needs a USB 2.0-only cable**, the sort that comes with a
   phone. USB 3 cables work fine for adb, then the bootloader silently fails to
   appear and you assume the phone is broken.

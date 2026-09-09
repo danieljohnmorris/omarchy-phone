@@ -1,6 +1,14 @@
 {
   // ~/.config/omarchy/extensions/omarchy-menu.jsonc on the phone.
   // Merged over Omarchy's default menu by id; these rows join System.
+  // Suspend is masked (s2idle never resumes). Same row, panel off instead.
+  "system.suspend": {
+    "icon": "󰒲",
+    "label": "Screen off",
+    "description": "Panel off, power key wakes it",
+    "when": "true",
+    "action": "fajita-screen-off"
+  },
   "system.bootloader": {
     "icon": "󰚥",
     "label": "Reboot to bootloader",

@@ -36,13 +36,13 @@ ssh $PH 'sudo pacman -Rdd --noconfirm ttf-jetbrains-mono-nerd >/dev/null 2>&1 ||
   sudo pacman -Udd --noconfirm /tmp/*.pkg.tar.zst'
 
 echo "== user provisioning + phone overrides"
-scp -q "$HERE/phone/monitors.lua" "$HERE/phone/input.lua" "$HERE/phone/autostart.lua" "$HERE/phone/looknfeel.lua" $PH:/tmp/
+scp -q "$HERE/phone/monitors.lua" "$HERE/phone/input.lua" "$HERE/phone/autostart.lua" "$HERE/phone/looknfeel.lua" "$HERE/phone/bindings.lua" $PH:/tmp/
 scp -q "$HERE/phone/bash_profile" $PH:/tmp/bash_profile
 scp -q "$HERE/phone/hooks/post-boot" $PH:/tmp/post-boot
 ssh $PH 'cp -rn /etc/skel/. ~/; cp /etc/skel/.bashrc ~/.bashrc
   source /etc/profile.d/omarchy.sh; source /etc/profile.d/proxy.sh
   OMARCHY_SETUP_CONTEXT=provision omarchy-provision-user --force || true
-  cp /tmp/monitors.lua /tmp/input.lua /tmp/autostart.lua /tmp/looknfeel.lua ~/.config/hypr/
+  cp /tmp/monitors.lua /tmp/input.lua /tmp/autostart.lua /tmp/looknfeel.lua /tmp/bindings.lua ~/.config/hypr/
   cp /tmp/bash_profile ~/.bash_profile
   # no fcitx5 on the phone; its restart loop steals Hyprland single input-method slot from squeekboard
   systemctl --user mask omarchy-fcitx5.service 2>/dev/null || true
@@ -66,9 +66,9 @@ ssh $PH 'cp -rn /etc/skel/. ~/; cp /etc/skel/.bashrc ~/.bashrc
 echo "== keyboard toggle bar widget (squeekboard auto-show is unreliable on Hyprland)"
 ssh $PH 'mkdir -p ~/.config/omarchy/plugins/fajita.keyboard ~/.local/bin'
 scp -q "$HERE/phone/plugins/fajita.keyboard/manifest.json" "$HERE/phone/plugins/fajita.keyboard/BarWidget.qml" $PH:~/.config/omarchy/plugins/fajita.keyboard/
-scp -q "$HERE/phone/fajita-osk-toggle" "$HERE/phone/fajita-osk-start" "$HERE/phone/fajita-slot-ok" $PH:~/.local/bin/
+scp -q "$HERE/phone/fajita-osk-toggle" "$HERE/phone/fajita-osk-start" "$HERE/phone/fajita-slot-ok" "$HERE/phone/fajita-screen-off" "$HERE/phone/fajita-power-key" $PH:~/.local/bin/
 scp -q "$HERE/phone/squeekboard.service" $PH:~/.config/systemd/user/
-ssh $PH 'chmod +x ~/.local/bin/fajita-osk-toggle ~/.local/bin/fajita-osk-start ~/.local/bin/fajita-slot-ok
+ssh $PH 'chmod +x ~/.local/bin/fajita-osk-toggle ~/.local/bin/fajita-osk-start ~/.local/bin/fajita-slot-ok ~/.local/bin/fajita-screen-off ~/.local/bin/fajita-power-key
   # squeekboard must bind while a focused text client exists (Hyprland 0.56 IME relay quirk); the
   # service primes that with a throwaway terminal. Do NOT start it from Hyprland exec/autostart.lua.
   systemctl --user daemon-reload; systemctl --user enable squeekboard.service'

@@ -15,6 +15,7 @@ phone/input.lua:.config/hypr/input.lua
 phone/autostart.lua:.config/hypr/autostart.lua
 phone/hyprland.lua:.config/hypr/hyprland.lua
 phone/looknfeel.lua:.config/hypr/looknfeel.lua
+phone/bindings.lua:.config/hypr/bindings.lua
 phone/bash_profile:.bash_profile
 phone/omarchy/shell.json:.config/omarchy/shell.json
 phone/omarchy/shell.toml:.config/omarchy/shell.toml
@@ -28,6 +29,8 @@ phone/fajita-osk-start:.local/bin/fajita-osk-start
 phone/fajita-osk-primer:.local/bin/fajita-osk-primer
 phone/fajita-osk-toggle:.local/bin/fajita-osk-toggle
 phone/fajita-slot-ok:.local/bin/fajita-slot-ok
+phone/fajita-screen-off:.local/bin/fajita-screen-off
+phone/fajita-power-key:.local/bin/fajita-power-key
 phone/fajita-second-bar:.local/bin/fajita-second-bar
 phone/hooks/post-boot:.config/omarchy/hooks/post-boot
 phone/apply-shell-patches.sh:.local/bin/apply-shell-patches.sh

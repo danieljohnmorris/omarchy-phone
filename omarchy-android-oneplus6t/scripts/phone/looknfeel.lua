@@ -13,3 +13,8 @@ o.window("org.omarchy.about", { size = { 518, 640 } })
 -- window, so no rule can resize it. It is ~900px wide and its close button is
 -- off the phone's screen. Sponsor upstream from a laptop instead.
 hl.config({ ecosystem = { no_donation_nag = true } })
+
+-- Only the power key wakes a switched-off panel (fajita-power-key). With these
+-- on, Hyprland wakes it on any key or touch, which reopens the menu on every
+-- wake and lights the screen in a pocket.
+hl.config({ misc = { key_press_enables_dpms = false, mouse_move_enables_dpms = false } })
