@@ -67,7 +67,7 @@ done <<< "$MAP"
 # root-owned files, fetched separately
 for pair in "phone/ttfx:/usr/local/bin/ttfx" "phone/proxy.sh:/etc/profile.d/proxy.sh" "phone/50-fajita-power.rules:/etc/polkit-1/rules.d/50-fajita-power.rules"; do
   repo=${pair%%:*}; remote=${pair#*:}
-  if ssh "$PH" "cat $remote" > "$tmp/f" 2>/dev/null; then
+  if ssh "$PH" "sudo -n cat $remote" > "$tmp/f" 2>/dev/null; then   # root-owned, some in root-only dirs
     if diff -q "$HERE/$repo" "$tmp/f" >/dev/null 2>&1; then same=$((same+1)); else
       echo "DIFFERS           $repo"; diff_n=$((diff_n+1))
       [ "$PULL" = "--pull" ] && cp "$tmp/f" "$HERE/$repo" && echo "    pulled phone version"
