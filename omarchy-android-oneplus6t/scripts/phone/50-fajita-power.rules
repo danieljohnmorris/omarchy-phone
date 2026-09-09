@@ -1,0 +1,16 @@
+// Let the phone's user reboot and power off without a polkit prompt.
+// Omarchy's menu runs `systemctl reboot` / `systemctl poweroff`; logind
+// answers "challenge" for a normal user, the shell's polkit agent asks for a
+// password, and there is no keyboard to type it. Members of wheel already
+// have passwordless sudo here, so this hides no new capability.
+polkit.addRule(function(action, subject) {
+  if (subject.isInGroup("wheel") &&
+      (action.id == "org.freedesktop.login1.reboot" ||
+       action.id == "org.freedesktop.login1.reboot-multiple-sessions" ||
+       action.id == "org.freedesktop.login1.power-off" ||
+       action.id == "org.freedesktop.login1.power-off-multiple-sessions" ||
+       action.id == "org.freedesktop.login1.halt" ||
+       action.id == "org.freedesktop.login1.set-reboot-parameter")) {
+    return polkit.Result.YES;
+  }
+});

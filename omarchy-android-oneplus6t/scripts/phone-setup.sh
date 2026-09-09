@@ -107,4 +107,9 @@ ssh $PH 'chmod +x ~/.local/bin/fajita-bar-order ~/.local/bin/fajita-omarchy-upda
   systemctl --user daemon-reload
   systemctl --user enable bar-order.service omarchy-update.timer'
 
+
+echo "== reboot/shutdown from the menu without a polkit password prompt"
+scp -q "$HERE/phone/50-fajita-power.rules" $PH:/tmp/
+ssh $PH 'sudo install -m644 -o root -g root /tmp/50-fajita-power.rules /etc/polkit-1/rules.d/50-fajita-power.rules; sudo systemctl restart polkit'
+
 echo "phone setup done"
