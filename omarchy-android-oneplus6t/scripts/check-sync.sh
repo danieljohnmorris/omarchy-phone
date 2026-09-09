@@ -14,6 +14,7 @@ phone/monitors.lua:.config/hypr/monitors.lua
 phone/input.lua:.config/hypr/input.lua
 phone/autostart.lua:.config/hypr/autostart.lua
 phone/hyprland.lua:.config/hypr/hyprland.lua
+phone/looknfeel.lua:.config/hypr/looknfeel.lua
 phone/bash_profile:.bash_profile
 phone/omarchy/shell.json:.config/omarchy/shell.json
 phone/omarchy/shell.toml:.config/omarchy/shell.toml

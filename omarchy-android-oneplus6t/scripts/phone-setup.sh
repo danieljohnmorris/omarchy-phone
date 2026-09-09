@@ -36,13 +36,13 @@ ssh $PH 'sudo pacman -Rdd --noconfirm ttf-jetbrains-mono-nerd >/dev/null 2>&1 ||
   sudo pacman -Udd --noconfirm /tmp/*.pkg.tar.zst'
 
 echo "== user provisioning + phone overrides"
-scp -q "$HERE/phone/monitors.lua" "$HERE/phone/input.lua" "$HERE/phone/autostart.lua" $PH:/tmp/
+scp -q "$HERE/phone/monitors.lua" "$HERE/phone/input.lua" "$HERE/phone/autostart.lua" "$HERE/phone/looknfeel.lua" $PH:/tmp/
 scp -q "$HERE/phone/bash_profile" $PH:/tmp/bash_profile
 scp -q "$HERE/phone/hooks/post-boot" $PH:/tmp/post-boot
 ssh $PH 'cp -rn /etc/skel/. ~/; cp /etc/skel/.bashrc ~/.bashrc
   source /etc/profile.d/omarchy.sh; source /etc/profile.d/proxy.sh
   OMARCHY_SETUP_CONTEXT=provision omarchy-provision-user --force || true
-  cp /tmp/monitors.lua /tmp/input.lua /tmp/autostart.lua ~/.config/hypr/
+  cp /tmp/monitors.lua /tmp/input.lua /tmp/autostart.lua /tmp/looknfeel.lua ~/.config/hypr/
   cp /tmp/bash_profile ~/.bash_profile
   # no fcitx5 on the phone; its restart loop steals Hyprland single input-method slot from squeekboard
   systemctl --user mask omarchy-fcitx5.service 2>/dev/null || true
@@ -55,6 +55,11 @@ ssh $PH 'cp -rn /etc/skel/. ~/; cp /etc/skel/.bashrc ~/.bashrc
   # migration done and re-enable sshd from a post-boot hook regardless.
   mkdir -p ~/.local/state/omarchy/migrations ~/.config/omarchy/hooks
   touch ~/.local/state/omarchy/migrations/1788124236
+  # Migration 1787215483 calls mise, which is not packaged for aarch64, and a
+  # failed migration blocks every later one and reopens the update prompt on
+  # each login. Mark it done; the preinstalls-removed marker makes the other
+  # mise-based migrations (Hermes, Cursor, Muse wrappers) skip themselves.
+  touch ~/.local/state/omarchy/migrations/1787215483.sh ~/.local/state/omarchy/preinstalls-removed
   install -m755 /tmp/post-boot ~/.config/omarchy/hooks/post-boot
   sudo systemctl enable sshd'
 

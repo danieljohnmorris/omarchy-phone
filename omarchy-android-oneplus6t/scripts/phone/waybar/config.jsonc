@@ -10,15 +10,18 @@
   "spacing": 12,
   "modules-left": ["battery"],
   "modules-center": ["clock"],
-  "modules-right": ["custom/date"],
+  "modules-right": ["clock#date"],
   "clock": {
     "interval": 1,
     "format": "{:%H:%M:%S}",
     "tooltip": false
   },
-  "custom/date": {
-    "exec": "date '+%a %-d %b'",
+  // A second clock instance rather than a custom `date` exec: the phone has no
+  // RTC, so waybar starts in 1970 and the custom module kept showing "Thu 1 Jan"
+  // long after NTP set the clock. The clock module tracks the jump.
+  "clock#date": {
     "interval": 60,
+    "format": "{:%a %e %b}",
     "tooltip": false
   },
   "battery": {
