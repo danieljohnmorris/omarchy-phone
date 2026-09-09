@@ -1,0 +1,20 @@
+--- a/shell/Ui/KeyboardPanel.qml
++++ b/shell/Ui/KeyboardPanel.qml
+@@
+   mask: Region {
+     width: root.screenW
+     height: root.screenH
++    // Phone port: the on-screen keyboard sits on the same overlay layer as this
++    // full-screen dismissal surface, so the first tap on a key registers as an
++    // "outside click" and closes the panel before anything is typed. Subtract
++    // the keyboard strip so those taps reach squeekboard instead.
++    regions: [
++      Region {
++        x: 0
++        y: root.screenH - 315
++        width: root.screenW
++        height: 315
++        intersection: Intersection.Subtract
++      }
++    ]
+   }

@@ -1,0 +1,21 @@
+/* Matches Omarchy's Tokyo Night bar so the two rows read as one unit. */
+* {
+  font-family: "JetBrainsMono Nerd Font", monospace;
+  font-size: 15px;
+  min-height: 0;
+}
+window#waybar {
+  background: #16161e;
+  color: #a9b1d6;
+  border-bottom: 1px solid #292e42;
+}
+#clock {
+  color: #c0caf5;
+  font-size: 18px;
+  font-weight: 600;
+  padding: 0 12px;
+}
+#battery { color: #9ece6a; padding: 0 12px; }
+#battery.warning { color: #e0af68; }
+#battery.critical { color: #f7768e; }
+#custom-date { color: #7aa2f7; padding: 0 12px; }

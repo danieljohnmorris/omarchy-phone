@@ -1,0 +1,12 @@
+#!/bin/bash
+# Toggle squeekboard visibility over its DBus interface. Installed to ~/.local/bin.
+# fajita-osk-toggle [show|hide]
+case "${1:-}" in
+  show) v=true ;;
+  hide) v=false ;;
+  *)
+    cur=$(busctl --user get-property sm.puri.OSK0 /sm/puri/OSK0 sm.puri.OSK0 Visible 2>/dev/null | awk '{print $2}')
+    if [[ $cur == true ]]; then v=false; else v=true; fi ;;
+esac
+pgrep -x squeekboard >/dev/null || { uwsm-app -- squeekboard >/dev/null 2>&1 & sleep 1; }
+busctl --user call sm.puri.OSK0 /sm/puri/OSK0 sm.puri.OSK0 SetVisible b "$v"

@@ -1,0 +1,4 @@
+work/
+*.img
+*.log
+.DS_Store

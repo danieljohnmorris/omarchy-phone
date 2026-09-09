@@ -1,0 +1,18 @@
+[Unit]
+Description=On-screen keyboard (squeekboard, primed for Hyprland's IME relay)
+PartOf=graphical-session.target
+After=graphical-session.target
+# never loop: a broken start must stay broken rather than spawn primer terminals forever
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/fajita-osk-start
+ExecStopPost=%h/.local/bin/fajita-osk-primer close
+Restart=on-failure
+RestartSec=10
+Slice=app-graphical.slice
+
+[Install]
+WantedBy=graphical-session.target

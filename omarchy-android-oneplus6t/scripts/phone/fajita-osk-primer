@@ -1,0 +1,62 @@
+#!/bin/bash
+# Open/close the throwaway terminal that primes Hyprland's input-method relay.
+# Hyprland 0.56.2: an IME binding while no text-input client is focused never
+# receives activate() for the rest of the session, so squeekboard must start
+# while a focused terminal exists. Called by squeekboard.service, never looped.
+set -u
+export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+hypr_sig() {
+  # hyprctl instances lists only live compositors; stale $XDG_RUNTIME_DIR/hypr/*
+  # dirs from earlier sessions can sort newer (phone boots with a 1970 clock),
+  # and Hyprland's own /proc environ never carries the signature.
+  hyprctl instances -j 2>/dev/null | python3 -c \
+    'import sys,json;a=json.load(sys.stdin);print(a[0]["instance"] if a else "")' 2>/dev/null
+}
+
+export HYPRLAND_INSTANCE_SIGNATURE=${HYPRLAND_INSTANCE_SIGNATURE:-$(hypr_sig)}
+export WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-$(ls "$XDG_RUNTIME_DIR" 2>/dev/null | grep -E '^wayland-[0-9]+$' | head -1)}
+ID=fajita-osk-primer
+
+primer_addrs() {
+  hyprctl clients -j 2>/dev/null | python3 -c \
+    'import sys,json;print(" ".join(c["address"] for c in json.load(sys.stdin) if c.get("class")=="'"$ID"'"))' 2>/dev/null
+}
+
+close_all() {
+  for _ in $(seq 1 10); do
+    a=$(primer_addrs); [ -z "$a" ] && return 0
+    for x in $a; do hyprctl dispatch closewindow "address:$x" >/dev/null 2>&1; done
+    sleep 1
+  done
+  pkill -f "foot --app-id $ID" 2>/dev/null
+}
+
+park() {
+  for _ in $(seq 1 10); do
+    a=$(primer_addrs); [ -z "$a" ] && return 0
+    for x in $a; do hyprctl dispatch movetoworkspacesilent "special:osk,address:$x" >/dev/null 2>&1; done
+    hyprctl clients -j 2>/dev/null | python3 -c \
+      'import sys,json;c=[x for x in json.load(sys.stdin) if x.get("class")=="'"$ID"'"];sys.exit(0 if c and all(x["workspace"]["name"]=="special:osk" for x in c) else 1)' && return 0
+    sleep 1
+  done
+}
+
+case "${1:-open}" in
+  park) park ;;
+  open)
+    for _ in $(seq 1 30); do hyprctl version >/dev/null 2>&1 && break; sleep 1; done
+    close_all                       # never accumulate primers across restarts
+    uwsm-app -- foot --app-id "$ID" >/dev/null 2>&1 &
+    for _ in $(seq 1 20); do
+      hyprctl activewindow 2>/dev/null | grep -q "class: $ID" && break
+      sleep 0.5
+    done
+    sleep 1
+    ;;
+  close)
+    # squeekboard has bound by now; the primer has served its purpose
+    sleep 2
+    close_all
+    ;;
+esac
+exit 0

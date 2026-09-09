@@ -1,0 +1,12 @@
+# Omarchy base packages suitable for the phone (from omarchy-base.packages),
+# minus desktop-only / huge / x86-only entries. Installed from Arch Linux ARM.
+alsa-utils avahi bash-completion bat bluez bluez-tools bluez-utils brightnessctl btop
+dosfstools dua-cli evince exfatprogs expac eza fakeroot fastfetch fd ffmpegthumbnailer fontconfig foot fzf git
+gnome-keyring gnome-themes-extra grim gum gvfs-mtp hyprland-guiutils hyprpicker hyprsunset
+imagemagick imv inetutils inotify-tools inxi networkmanager jq less libsecret libvips libyaml localsend
+lua51 luarocks man-db mpv mpv-mpris nautilus nautilus-python gnome-disk-utility
+noto-fonts noto-fonts-cjk noto-fonts-emoji nss-mdns nvim pacman-contrib pamixer plocate power-profiles-daemon
+python-gobject python-poetry-core qrencode qt6-imageformats qt6-multimedia qt6-multimedia-ffmpeg quickshell
+ripgrep ruby slurp socat starship sushi tldr tree-sitter-cli tmux ttf-jetbrains-mono-nerd udiskie ufw
+unzip usbutils wget whois wireplumber wl-clipboard woff2-font-awesome xdg-desktop-portal-gtk xdg-desktop-portal-hyprland
+xdg-user-dirs xmlstarlet yaml-language-server zoxide walker hyprlock hypridle mako swayosd waybar wofi

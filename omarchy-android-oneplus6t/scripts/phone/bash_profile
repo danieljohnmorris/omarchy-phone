@@ -1,0 +1,4 @@
+[[ -f ~/.bashrc ]] && . ~/.bashrc
+if [[ -z $WAYLAND_DISPLAY && $(tty) == /dev/tty1 ]]; then
+  exec uwsm start -g -1 -e -D Hyprland hyprland.desktop > ~/session.log 2>&1
+fi

@@ -1,0 +1,9 @@
+#!/bin/bash
+# ~/.config/omarchy/hooks/post-boot on the phone.
+# Omarchy migration 1788124236 disables sshd when it decides no key is
+# authorized (it ran at first session start with passwordless sudo and locked
+# the Mac out). The phone is driven entirely over USB ssh, so always bring
+# sshd back after boot.
+sudo -n systemctl enable --now sshd.service 2>/dev/null || true
+# keep the USB link's DHCP router-less so the Mac never routes via the phone
+true

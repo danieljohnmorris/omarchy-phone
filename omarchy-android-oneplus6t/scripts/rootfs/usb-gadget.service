@@ -1,0 +1,12 @@
+[Unit]
+Description=USB ethernet gadget (NCM)
+After=sys-kernel-config.mount
+Before=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/usb-gadget.sh
+
+[Install]
+WantedBy=multi-user.target

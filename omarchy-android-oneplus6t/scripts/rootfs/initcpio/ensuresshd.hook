@@ -1,0 +1,13 @@
+#!/usr/bin/ash
+# The phone has no keyboard; everything is driven over USB ssh. Omarchy's
+# migrations can disable sshd (1788124236 did). Re-enable it from the
+# initramfs every boot so a lockout can never survive a reboot.
+run_latehook() {
+    local r=/new_root
+    [ -d "$r/etc/systemd/system" ] || return 0
+    mkdir -p "$r/etc/systemd/system/multi-user.target.wants"
+    ln -sf /usr/lib/systemd/system/sshd.service \
+        "$r/etc/systemd/system/multi-user.target.wants/sshd.service"
+    rm -f "$r/etc/systemd/system/sshd.service"   # a mask would be a symlink to /dev/null
+    return 0
+}

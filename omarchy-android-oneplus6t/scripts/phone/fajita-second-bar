@@ -1,0 +1,21 @@
+#!/bin/bash
+# Second bar row (clock) below Omarchy's bar.
+#
+# Both bars anchor to the top, and whichever maps first takes y=0. The phone's
+# notch sits dead centre at the very top, so Omarchy's bar must own that strip
+# and the clock row must sit under it. Wait for Omarchy's bar to appear before
+# starting, which fixes the order.
+set -u
+export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+hypr_sig() {
+  hyprctl instances -j 2>/dev/null | python3 -c \
+    'import sys,json;a=json.load(sys.stdin);print(a[0]["instance"] if a else "")' 2>/dev/null
+}
+for _ in $(seq 1 60); do sig=$(hypr_sig); [ -n "$sig" ] && break; sleep 1; done
+export HYPRLAND_INSTANCE_SIGNATURE=$sig
+for _ in $(seq 1 60); do
+  hyprctl layers 2>/dev/null | grep -q "namespace: omarchy-bar" && break
+  sleep 1
+done
+sleep 1
+exec waybar

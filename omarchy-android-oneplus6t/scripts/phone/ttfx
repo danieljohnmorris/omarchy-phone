@@ -1,0 +1,17 @@
+#!/bin/bash
+# Phone port: Omarchy ships ttfx (a Rust rewrite of terminaltexteffects) for
+# x86_64 only, so the screensaver has no effects engine on aarch64. The original
+# Python terminaltexteffects (python-terminaltexteffects, arch=any in the Omarchy
+# repo) accepts the same options, but it is far slower than the Rust build: at
+# Omarchy's default 120 fps it saturates the SDM845 and wedges the session, so
+# the frame rate is clamped here.
+MAXFPS=${TTFX_MAX_FPS:-20}
+args=()
+while (($#)); do
+  case "$1" in
+    -i) args+=(--input-file "$2"); shift 2 ;;
+    --frame-rate) shift 2 ;;            # dropped; re-added below
+    *)  args+=("$1"); shift ;;
+  esac
+done
+exec -a ttfx nice -n 10 tte --frame-rate "$MAXFPS" "${args[@]}"

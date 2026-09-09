@@ -1,0 +1,29 @@
+// Second bar row for the phone: the OnePlus 6T's teardrop notch sits dead centre
+// of the top bar, so the clock is unreadable there. Omarchy's own bar stays as
+// row one; this sits directly underneath it and carries the time and battery.
+{
+  "layer": "top",
+  "position": "top",
+  "height": 34,
+  // Omarchy's bar reserves its own space, so no margin is needed to sit below it.
+  "margin-top": 0,
+  "spacing": 12,
+  "modules-left": ["battery"],
+  "modules-center": ["clock"],
+  "modules-right": ["custom/date"],
+  "clock": {
+    "interval": 1,
+    "format": "{:%H:%M:%S}",
+    "tooltip": false
+  },
+  "custom/date": {
+    "exec": "date '+%a %-d %b'",
+    "interval": 60,
+    "tooltip": false
+  },
+  "battery": {
+    "format": "{capacity}%",
+    "format-charging": "{capacity}% +",
+    "tooltip": false
+  }
+}

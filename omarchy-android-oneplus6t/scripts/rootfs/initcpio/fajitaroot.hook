@@ -1,0 +1,8 @@
+#!/usr/bin/ash
+# OnePlus ABL appends "root=/dev/dm-0 dm=..." to the cmdline, clobbering ours.
+# Force the real root device here (hooks run before root is resolved).
+run_hook() {
+    export root="/dev/sda17"
+    export rwopt="rw"
+    export rootfstype="ext4"
+}

@@ -1,0 +1,3 @@
+#!/bin/bash
+build() { add_runscript; }
+help() { echo "Force root=/dev/sda17 on OnePlus 6T (bootloader injects root=/dev/dm-0)."; }

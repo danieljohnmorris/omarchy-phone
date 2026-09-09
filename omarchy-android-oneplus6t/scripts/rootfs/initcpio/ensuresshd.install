@@ -1,0 +1,3 @@
+#!/bin/bash
+build() { add_runscript; }
+help() { echo "Re-enable sshd on the root filesystem from the initramfs (headless phone, no keyboard)."; }

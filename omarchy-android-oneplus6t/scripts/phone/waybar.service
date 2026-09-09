@@ -1,0 +1,16 @@
+[Unit]
+Description=Second bar row (clock) below Omarchy's bar
+PartOf=graphical-session.target
+After=graphical-session.target
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/fajita-second-bar
+Restart=on-failure
+RestartSec=5
+Slice=app-graphical.slice
+
+[Install]
+WantedBy=graphical-session.target

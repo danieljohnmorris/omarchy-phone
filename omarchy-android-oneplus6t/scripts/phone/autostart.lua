@@ -1,0 +1,2 @@
+-- Phone: on-screen keyboard
+-- squeekboard is started first from hyprland.lua

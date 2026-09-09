@@ -1,0 +1,20 @@
+# Omarchy's own packages that are architecture-independent, so they install on
+# aarch64 even though Omarchy publishes no ARM builds. Fetched by
+# scripts/fetch-packages.sh from https://pkgs.omarchy.org/x86_64 (an aarch64
+# repo exists at that host but holds only omarchy-keyring, so it is no use).
+#
+# The other 184 packages in that repo are compiled x86_64-only and are simply
+# unavailable here: aether, cliamp, walker/elephant, ttfx, 1password, and so on.
+omarchy
+omarchy-keyring
+omarchy-settings
+omarchy-nvim
+tobi-try
+ttf-ia-writer
+ttf-jetbrains-mono-nerd-basic
+xdg-terminal-exec
+yaru-icon-theme
+# Screensaver effects engine. Omarchy's own ttfx is a Rust rewrite built for
+# x86_64 only; this is the Python original it was ported from, and
+# scripts/phone/ttfx maps ttfx onto it.
+python-terminaltexteffects

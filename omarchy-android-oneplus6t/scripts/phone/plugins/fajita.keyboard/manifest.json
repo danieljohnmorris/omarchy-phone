@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "fajita.keyboard",
+  "name": "Keyboard",
+  "version": "1.0.0",
+  "author": "Dan",
+  "description": "Tap to show/hide the on-screen keyboard (squeekboard)",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Keyboard",
+    "description": "On-screen keyboard toggle",
+    "category": "Input",
+    "allowMultiple": false
+  }
+}
