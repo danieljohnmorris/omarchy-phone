@@ -1,39 +1,40 @@
 # Omarchy on a OnePlus 6T (fajita)
 
-Pure Arch Linux ARM + Hyprland 0.56 + Omarchy 4.0.2 Quattro replacing Android
-on a OnePlus 6T. Kernel is the prebuilt postmarketOS `linux-postmarketos-qcom-sdm845`
-6.16.7 binary with the fajita DTB; everything else is Arch, built with pacman.
+Android is gone. The phone runs Arch Linux ARM, Hyprland 0.56 and Omarchy 4
+Quattro. The kernel is postmarketOS's prebuilt `linux-postmarketos-qcom-sdm845`
+6.16.7 with the fajita device tree. Everything above it is Arch, installed with
+pacman.
 
-Nothing here forks Omarchy or Arch. It is the recipe that assembles them for a
-phone: image build scripts, the device configuration that lands on the phone,
-and a small set of patches to Omarchy's touch behaviour, kept re-appliable
-because package upgrades overwrite them. See Status at the bottom for what
-works.
+I haven't forked Omarchy or Arch. This assembles them: build scripts, the config
+that lands on the phone, and a few patches to Omarchy's touch handling. The
+patches are kept re-appliable because package upgrades overwrite them. Status is
+at the bottom.
 
 ## Layout
 
-- `scripts/build-rootfs.sh` — run inside the privileged arm64 Docker container
+- `scripts/build-rootfs.sh`: run inside the privileged arm64 Docker container
   (`fajita-build`, `work/` mounted at `/work`). Produces `work/out/rootfs.img`
   (16 GB ext4, label `archroot`) and `work/out/boot.img`.
-- `scripts/rootfs/` — files dropped into the image: mkinitcpio config, the
+- `scripts/rootfs/`: files that go into the image. mkinitcpio config, the
   `fajitaroot` initcpio hook, USB gadget service, networkd config.
-- `scripts/build-hyprland.sh` — rebuilds Hyprland from the Arch PKGBUILD inside
+- `scripts/build-hyprland.sh`: rebuilds Hyprland from the Arch PKGBUILD inside
   the chroot (ALARM's binary lags aquamarine's soname).
-- `scripts/build-qcom-services.sh` — pd-mapper, tqftpserv (linux-msm GitHub) and
+- `scripts/build-qcom-services.sh`: pd-mapper, tqftpserv (linux-msm GitHub) and
   the sdm845-mainline ALSA UCM profiles. Wi-Fi does not appear without pd-mapper.
-- `scripts/flash.sh` — host side: `unlock | boot-test | flash` via fastboot.
-- `scripts/phone-setup.sh` — Omarchy layer + phone adaptations over ssh.
-- `scripts/phone/` — the phone-side files (Lua overrides, bash_profile, proxy env, hooks).
-- `scripts/shot.sh` — screenshot the phone's Hyprland session over USB.
-- `work/` (gitignored) — tarballs, pmOS apks, images, Omarchy checkout, packages.
+- `scripts/flash.sh`: runs on the host. `unlock`, `boot-test` or `flash` via fastboot.
+- `scripts/phone-setup.sh`: Omarchy layer + phone adaptations over ssh.
+- `scripts/phone/`: the phone-side files (Lua overrides, bash_profile, proxy env, hooks).
+- `scripts/shot.sh`: screenshot the phone's Hyprland session over USB.
+- `work/` (gitignored): tarballs, pmOS apks, images, Omarchy checkout, packages.
 
-## Hard-won facts
+## Things that cost me a day
 
-- **Fastboot on a Mac needs a USB 2.0-only cable** (a charge cable). USB 3
-  cables enumerate for adb but the bootloader's USB stack drops off silently.
+- **Fastboot on a Mac needs a USB 2.0-only cable**, the sort that comes with a
+  phone. USB 3 cables work fine for adb, then the bootloader silently fails to
+  appear and you assume the phone is broken.
 - The OnePlus bootloader appends `root=/dev/dm-0 dm=...` after our cmdline.
   `PARTLABEL=userdata` and `/dev/sda17` both time out unless the initramfs
-  hook `fajitaroot` forces the root device. maggu2810 hit the same thing.
+  hook `fajitaroot` forces the root device. maggu2810 hit this too.
 - Booting from the flashed boot partition (not `fastboot boot`) hands the kernel
   a splash `simplefb` that steals fb0 and blanks the panel:
   `initcall_blacklist=simplefb_init`. Test on flashed boots, not `fastboot boot`.

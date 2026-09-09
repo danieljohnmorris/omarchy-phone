@@ -1,41 +1,53 @@
 # Omarchy ports
 
-Getting [Omarchy](https://omarchy.org) running on hardware it was not built for.
-One folder per device, each self-contained: build scripts, the configuration that
-lands on the device, and the patches needed to make a desktop shell usable there.
+I put [Omarchy](https://omarchy.org) on a OnePlus 6T. Android is gone. The phone
+boots Arch Linux ARM with a mainline kernel, Hyprland, and Omarchy's own shell on
+top of that.
 
-Omarchy publishes x86_64 builds only. Its aarch64 repository exists but currently
-holds a single package, and DHH has said ARM support is coming. Until then, a
-third of its packages are architecture-independent and install anywhere; the rest
-are compiled for Intel. Where a package is labelled x86_64 but contains no
-compiled code, `repack-noarch.sh` relabels it, refusing anything with real
-binaries.
+One folder per device. Each holds the build scripts, the config that lands on the
+phone, and the patches that make a desktop shell work with a finger.
 
 ## Devices
 
-| Folder | Device | State |
+| Folder | Device | Where it got to |
 |---|---|---|
-| [`omarchy-android-oneplus6t`](omarchy-android-oneplus6t) | OnePlus 6T (fajita), Snapdragon 845 | Boots unattended into Omarchy 4. Bar, menu, on-screen keyboard, terminal, GPU, audio, Wi-Fi. Bluetooth, lock screen and cellular outstanding. |
+| [`omarchy-android-oneplus6t`](omarchy-android-oneplus6t) | OnePlus 6T (fajita), Snapdragon 845 | Boots on its own into Omarchy 4. Bar, menu, on-screen keyboard, terminal, GPU, audio, Wi-Fi all work. Bluetooth, lock screen and cellular don't. |
 
-## What these ports have in common
+## Omarchy on ARM
 
-Android is replaced entirely: the phone runs Arch Linux ARM with a mainline
-kernel, Hyprland, and Omarchy's own shell on top. Nothing here forks Omarchy or
-Arch; each folder is the recipe that assembles them, so upstream stays upstream.
+Omarchy publishes x86_64 builds only. There is an aarch64 repo at
+`pkgs.omarchy.org/aarch64` but it holds one package, and DHH has said ARM support
+is coming.
 
-The recurring work is not the build, it is the assumptions a desktop makes:
+Of the 217 packages in the x86_64 repo, 33 are `arch=any` and install anywhere.
+That third is what the phone runs. The rest are compiled for Intel.
 
-- **Touch.** Handlers written for a mouse ignore a finger. Popups sized for a
-  laptop cover a phone screen. A dismiss-on-outside-click surface swallows the
-  first keypress on an on-screen keyboard.
-- **Architecture.** Anything compiled is missing, and the substitutes are slower.
-- **Phone hardware.** Notches sit where clocks go. Suspend does not always
-  resume. There is no real-time clock, so the machine starts in 1970 and things
-  that sort by time silently pick the wrong one.
+Some are labelled x86_64 without containing any compiled code. Omarchy 4.0.2
+shipped `omarchy` and `omarchy-settings` as `arch=any`; 4.0.3 labels them x86_64,
+and I unpacked it to check: 1172 files, no binaries at all. `repack-noarch.sh`
+relabels packages like that, and refuses any that really do contain binaries.
 
-Each device folder documents what it hit, with the reasoning, so the next port
-starts further along.
+## What took the time
+
+Very little of it was the build. Three things came up repeatedly, and I'd expect
+all three on any phone.
+
+- **Touch.** Handlers written for a mouse ignore a finger, so menus opened but
+  nothing selected. Popups sized for a laptop cover the screen. The panel's
+  click-catcher counted the first tap on the on-screen keyboard as a click
+  outside itself and closed.
+- **Anything compiled is missing.** The screensaver needs `ttfx`, a Rust rewrite
+  Omarchy builds for x86_64. I swapped in the Python original it was ported from.
+  It runs, but not at 120fps: at Omarchy's default it saturated the CPU and hung
+  the phone.
+- **Phone hardware.** The notch sits where the clock goes, so the time was
+  unreadable until I moved it to a second bar row. Suspend never resumes, which
+  looks exactly like a dead phone. There's no real-time clock, so every boot
+  starts in 1970, and anything that picks the newest file by timestamp quietly
+  chooses a stale one.
+
+Each folder writes up what it hit and why it happened.
 
 ## Licence
 
-MIT. See each folder's `LICENSE`.
+MIT.
