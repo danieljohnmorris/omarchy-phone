@@ -1,0 +1,14 @@
+[Unit]
+Description=Keep the clock row below Omarchy's bar after shell restarts
+PartOf=graphical-session.target
+After=graphical-session.target waybar.service
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/fajita-bar-order
+Restart=on-failure
+RestartSec=10
+Slice=app-graphical.slice
+
+[Install]
+WantedBy=graphical-session.target

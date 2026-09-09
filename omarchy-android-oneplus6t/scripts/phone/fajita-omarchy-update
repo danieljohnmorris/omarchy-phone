@@ -1,0 +1,70 @@
+#!/bin/bash
+# Upgrade Omarchy on the phone from Omarchy's own x86_64 repository.
+#
+# `omarchy-update` cannot be used here: it expects the [omarchy] pacman repo,
+# which publishes x86_64 packages that pacman refuses on aarch64. This does the
+# same job for the packages that are portable: read the repo database, fetch
+# any newer version of each package in omarchy-packages.txt, relabel the ones
+# that contain no compiled code (repack-noarch.sh refuses the rest), install
+# with dependency checks skipped for the laptop-only deps, then re-apply the
+# touch patches and restart the shell.
+#
+# Run by omarchy-update.timer weekly, or by hand: fajita-omarchy-update [--check]
+set -uo pipefail
+REPO=${OMARCHY_REPO:-https://pkgs.omarchy.org/x86_64}
+LIST=${OMARCHY_PACKAGES:-$HOME/.local/share/fajita/omarchy-packages.txt}
+CACHE=$HOME/.cache/omarchy-arm
+CHECK=${1:-}
+mkdir -p "$CACHE"
+tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+
+curl -sfL -o "$tmp/db.tar.gz" "$REPO/omarchy.db" || { echo "cannot reach $REPO"; exit 1; }
+mkdir -p "$tmp/db" && tar -xf "$tmp/db.tar.gz" -C "$tmp/db"
+python3 - "$tmp/db" "$tmp/index" <<'PY'
+import os, sys
+db, out = sys.argv[1], sys.argv[2]
+rows = []
+for d in os.listdir(db):
+    p = os.path.join(db, d, "desc")
+    if not os.path.exists(p): continue
+    L = open(p).read().splitlines()
+    f = {L[i].strip("%"): L[i+1] for i in range(len(L)-1) if L[i].startswith("%")}
+    if "NAME" in f:
+        rows.append("\t".join((f["NAME"], f.get("VERSION","?"), f.get("ARCH","?"), f.get("FILENAME","?"))))
+open(out, "w").write("\n".join(rows))
+PY
+
+to_install=()
+while read -r name; do
+  row=$(awk -F'\t' -v n="$name" '$1==n {print; exit}' "$tmp/index")
+  [ -z "$row" ] && continue
+  ver=$(printf '%s' "$row" | cut -f2); arch=$(printf '%s' "$row" | cut -f3); file=$(printf '%s' "$row" | cut -f4)
+  have=$(pacman -Q "$name" 2>/dev/null | awk '{print $2}')
+  [ "$have" = "$ver" ] && continue
+  if [ "$(vercmp "${have:-0}" "$ver")" -ge 0 ]; then continue; fi
+  echo "$name: ${have:-not installed} -> $ver"
+  [ "$CHECK" = "--check" ] && continue
+  curl -sfL -o "$tmp/$file" "$REPO/$file" || { echo "  download failed"; continue; }
+  if [ "$arch" = "any" ]; then
+    mv "$tmp/$file" "$CACHE/"; to_install+=("$CACHE/$file")
+  else
+    if "$HOME/.local/bin/repack-noarch.sh" "$tmp/$file" >/dev/null 2>&1; then
+      any="${file%-*.pkg.tar.zst}-any.pkg.tar.zst"
+      mv "$tmp/$any" "$CACHE/"; to_install+=("$CACHE/$any")
+      echo "  relabelled as any (no compiled code)"
+    else
+      echo "  genuinely $arch, skipped"
+    fi
+  fi
+done < <(grep -vE '^\s*#|^\s*$' "$LIST")
+
+[ "$CHECK" = "--check" ] && exit 0
+if [ ${#to_install[@]} -eq 0 ]; then echo "up to date"; exit 0; fi
+
+sudo pacman -Udd --noconfirm "${to_install[@]}" || exit 1
+# omarchy-tzupdate and friends must be root-owned or sudo refuses them
+pacman -Qlq omarchy omarchy-settings 2>/dev/null | while read -r f; do
+  [ -e "$f" ] && [ "$(stat -c %u "$f")" != "0" ] && printf '%s\0' "$f"
+done | sudo xargs -0 -r chown -h root:root
+"$HOME/.local/bin/apply-shell-patches.sh"
+echo "upgraded: ${to_install[*]##*/}"

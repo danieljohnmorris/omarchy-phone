@@ -108,6 +108,21 @@ Other phone-specific changes, applied by `phone-setup.sh`:
   it to `tte` from `python-terminaltexteffects` with the frame rate clamped, and
   the screensaver ships disabled: the Python engine at 120fps wedges the phone.
 
+## Upgrading Omarchy
+
+`omarchy-update` cannot run here: it uses the `[omarchy]` pacman repo, which
+publishes x86_64 packages that pacman refuses on aarch64. `fajita-omarchy-update`
+does the same job for the packages that are portable. It reads the repo
+database, fetches anything newer than what is installed, relabels packages that
+contain no compiled code (`repack-noarch.sh` refuses any that do), installs
+with `pacman -Udd`, fixes file ownership, re-applies the touch patches and
+restarts the shell. `omarchy-update.timer` runs it on Sunday evenings;
+`fajita-omarchy-update --check` lists what it would do.
+
+`fajita-bar-order` (a user service) restarts the clock row whenever a shell
+restart remaps Omarchy's bar underneath it, which otherwise puts the clock back
+under the notch.
+
 ## Rebuild from scratch
 
 1. Docker Desktop up. `docker run -d --name fajita-build --privileged --platform linux/arm64 -v $PWD/work:/work ubuntu:24.04 sleep infinity`, apt install e2fsprogs cpio arch-install-scripts android-sdk-libsparse-utils build-essential git zstd systemd-container, build osm0sis/mkbootimg with `CFLAGS="-O2 -w"`.

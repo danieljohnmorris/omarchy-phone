@@ -1,0 +1,10 @@
+[Unit]
+Description=Weekly Omarchy upgrade check
+
+[Timer]
+OnCalendar=Sun 20:00
+Persistent=true
+RandomizedDelaySec=30min
+
+[Install]
+WantedBy=timers.target

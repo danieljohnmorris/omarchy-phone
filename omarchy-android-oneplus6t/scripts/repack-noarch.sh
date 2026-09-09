@@ -8,13 +8,17 @@
 # assets (verified: 1172 files, zero ELF binaries). pacman refuses a foreign-arch
 # package, so without this the phone is pinned to 4.0.2 forever.
 #
+# Entries are written owned by root:root. An earlier version tarred with the
+# invoking user's uid, and pacman then installed /etc/sudoers.d/omarchy-tzupdate
+# owned by uid 501, which sudo refuses to read.
+#
 # Usage: scripts/repack-noarch.sh <pkg.tar.zst> [more...]
 # Writes <name>-<ver>-any.pkg.tar.zst next to each input.
 set -euo pipefail
 
 for pkg in "$@"; do
   [ -f "$pkg" ] || { echo "no such file: $pkg" >&2; exit 1; }
-  tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+  tmp=$(mktemp -d)
   tar -xf "$pkg" -C "$tmp"
 
   elf=$(find "$tmp" -type f -exec file {} + 2>/dev/null | grep -c ELF || true)
@@ -26,8 +30,26 @@ for pkg in "$@"; do
 
   sed -i.bak 's/^arch = .*/arch = any/' "$tmp/.PKGINFO" && rm -f "$tmp/.PKGINFO.bak"
   out="${pkg%-*.pkg.tar.zst}-any.pkg.tar.zst"
-  ( cd "$tmp" && tar --zstd -cf "$out" .PKGINFO .MTREE .INSTALL * 2>/dev/null \
-    || tar --zstd -cf "$out" .PKGINFO * )
-  echo "repacked $(basename "$pkg") -> $(basename "$out") ($(find "$tmp" -type f | wc -l | tr -d ' ') files, no binaries)"
-  rm -rf "$tmp"; trap - EXIT
+
+  # Force root ownership regardless of which tar this is (GNU on the phone or
+  # in Docker, bsdtar on macOS) by writing the archive from python's tarfile.
+  python3 - "$tmp" "$out" <<'PY'
+import io, os, subprocess, sys, tarfile
+src, out = sys.argv[1], sys.argv[2]
+buf = io.BytesIO()
+with tarfile.open(fileobj=buf, mode="w", format=tarfile.GNU_FORMAT) as tf:
+    def root(ti):
+        ti.uid = ti.gid = 0; ti.uname = ti.gname = "root"; return ti
+    # pacman expects the metadata files first
+    for meta in (".PKGINFO", ".MTREE", ".INSTALL", ".BUILDINFO", ".CHANGELOG"):
+        p = os.path.join(src, meta)
+        if os.path.exists(p): tf.add(p, arcname=meta, filter=root)
+    for name in sorted(os.listdir(src)):
+        if name.startswith("."): continue
+        tf.add(os.path.join(src, name), arcname=name, filter=root)
+with open(out, "wb") as f:
+    subprocess.run(["zstd", "-q", "-T0", "-c"], input=buf.getvalue(), stdout=f, check=True)
+PY
+  echo "repacked $(basename "$pkg") -> $(basename "$out") ($(find "$tmp" -type f | wc -l | tr -d ' ') files, no binaries, root-owned)"
+  rm -rf "$tmp"
 done

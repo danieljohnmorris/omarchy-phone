@@ -65,4 +65,6 @@ open(p,"w").write(s.replace(old,new,1)); print("patched menu")
 PY2
 
 omarchy-restart-shell >/dev/null 2>&1 || true
+# the shell remaps its bar; restart the clock row so it lands beneath it again
+sleep 6; systemctl --user restart waybar.service 2>/dev/null || true
 echo "shell restarted"

@@ -97,4 +97,14 @@ ssh $PH 'chmod +x ~/.local/bin/fajita-second-bar
   omarchy-display-text-size 18 >/dev/null 2>&1 || true'
 
 
+
+echo "== keep the clock row under Omarchy's bar across shell restarts, and weekly Omarchy upgrades"
+scp -q "$HERE/phone/fajita-bar-order" "$HERE/phone/fajita-omarchy-update" "$HERE/repack-noarch.sh" $PH:.local/bin/
+scp -q "$HERE/phone/bar-order.service" "$HERE/phone/omarchy-update.service" "$HERE/phone/omarchy-update.timer" $PH:.config/systemd/user/
+ssh $PH 'mkdir -p ~/.local/share/fajita'
+scp -q "$HERE/omarchy-packages.txt" $PH:.local/share/fajita/
+ssh $PH 'chmod +x ~/.local/bin/fajita-bar-order ~/.local/bin/fajita-omarchy-update ~/.local/bin/repack-noarch.sh
+  systemctl --user daemon-reload
+  systemctl --user enable bar-order.service omarchy-update.timer'
+
 echo "phone setup done"

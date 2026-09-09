@@ -1,0 +1,7 @@
+[Unit]
+Description=Upgrade Omarchy from its x86_64 repo, relabelling portable packages for ARM
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/fajita-omarchy-update

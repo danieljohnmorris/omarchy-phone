@@ -1,0 +1,39 @@
+#!/bin/bash
+# Keep the clock row (waybar) below Omarchy's bar.
+#
+# Both anchor to the top of the screen and whichever maps first takes y=0. The
+# notch is dead centre at the top, so Omarchy's bar must own that strip and the
+# clock must sit under it. fajita-second-bar gets the order right at login, but
+# `omarchy-restart-shell` (run by upgrades and theme changes) remaps Omarchy's
+# bar underneath the already-mapped clock row. This loop notices and restarts
+# waybar, which waits for Omarchy's bar and maps beneath it.
+set -u
+export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+hypr_sig() {
+  hyprctl instances -j 2>/dev/null | python3 -c \
+    'import sys,json;a=json.load(sys.stdin);print(a[0]["instance"] if a else "")' 2>/dev/null
+}
+while true; do
+  sig=$(hypr_sig)
+  if [ -n "$sig" ]; then
+    export HYPRLAND_INSTANCE_SIGNATURE=$sig
+    order=$(hyprctl layers -j 2>/dev/null | python3 -c '
+import sys, json
+ys = {}
+for out in json.load(sys.stdin).values():
+    for layers in out["levels"].values():
+        for l in layers:
+            if l["namespace"] in ("omarchy-bar", "waybar"):
+                ys[l["namespace"]] = l["y"]
+if "omarchy-bar" in ys and "waybar" in ys:
+    print("wrong" if ys["waybar"] < ys["omarchy-bar"] else "ok")
+else:
+    print("missing")
+' 2>/dev/null)
+    if [ "$order" = "wrong" ]; then
+      systemctl --user restart waybar.service
+      sleep 10
+    fi
+  fi
+  sleep 5
+done
