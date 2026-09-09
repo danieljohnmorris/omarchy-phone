@@ -36,8 +36,14 @@ case "${1:-}" in
     echo "-> current slot: $($FB getvar current-slot 2>&1 | grep -i slot || true)"
     echo "-> erase dtbo (android dtbo overlay conflicts with mainline dtb)"
     $FB erase dtbo || true
-    echo "-> flash boot"
-    $FB flash boot "$OUT/boot.img"
+    # Both slots, and make b active with a fresh retry count: the bootloader
+    # falls back to the other slot after 7 boots that never mark themselves
+    # successful (fajita-slot-ok does that from the post-boot hook), and a
+    # fallback into the untouched OxygenOS slot would try to "repair" our rootfs.
+    echo "-> flash boot to both slots"
+    $FB flash boot_a "$OUT/boot.img"
+    $FB flash boot_b "$OUT/boot.img"
+    $FB --set-active=b
     echo "-> flash userdata (rootfs)"
     if [ -f "$OUT/rootfs.simg" ]; then $FB -S 512M flash userdata "$OUT/rootfs.simg"
     else $FB -S 512M flash userdata "$OUT/rootfs.img"; fi

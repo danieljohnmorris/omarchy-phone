@@ -1,7 +1,9 @@
 # Omarchy on a OnePlus 6T (fajita)
 
-This replaces Android on a OnePlus 6T with Arch Linux ARM, Hyprland 0.56 and
-Omarchy 4 Quattro. The kernel is postmarketOS's prebuilt
+This boots a OnePlus 6T into Arch Linux ARM, Hyprland 0.56 and Omarchy 4
+Quattro instead of Android. It overwrites one boot slot and the userdata
+partition; OxygenOS's system partitions stay, and the bootloader can fall back
+to them if the Arch slot is never marked successful. The kernel is postmarketOS's prebuilt
 `linux-postmarketos-qcom-sdm845` 6.16.7 with the fajita device tree, and
 everything above it is Arch installed with pacman.
 
@@ -29,6 +31,25 @@ what doesn't is at the bottom.
 
 ## Things that cost me a day
 
+- **The bootloader fell back to Android after a week of reboots.** The 6T is
+  an A/B device and Qualcomm's bootloader gives each slot 7 boot attempts until
+  the OS marks the slot successful, which Android does and this install did
+  not. When slot B hit zero it booted the untouched OxygenOS in slot A, whose
+  init then wanted to "repair" our rootfs on userdata. `fajita-slot-ok` sets
+  the successful bit with `sfdisk --part-attrs` from the post-boot hook, and
+  `flash.sh` now writes the boot image to both slots. Android's system and
+  vendor partitions are still on the phone; this install does not remove them.
+- **`hyprctl dispatch` is Lua on Hyprland 0.56.** `hyprctl dispatch closewindow
+  address:0x...` is a silent no-op; it has to be
+  `hyprctl dispatch 'hl.dsp.window.close({ window = "address:0x..." })'`.
+  The keyboard primer sat visible on workspace 1 until its two calls were
+  rewritten.
+- **Hyprland's donation popup is not a window.** It is an internal surface
+  ~900px wide with its close button off the phone's screen, so no window rule
+  can size it. `ecosystem.no_donation_nag = true` in `looknfeel.lua`.
+- **Omarchy floats are 875x600.** On a 540-wide phone the update prompt's
+  "press any key" sat off the right edge. `looknfeel.lua` re-sizes the
+  `floating-window` tag and the About window to 518x640.
 - **Fastboot on a Mac needs a USB 2.0-only cable**, the sort that comes with a
   phone. USB 3 cables work fine for adb, then the bootloader silently fails to
   appear and you assume the phone is broken.

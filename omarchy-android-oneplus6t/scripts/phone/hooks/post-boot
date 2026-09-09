@@ -5,5 +5,5 @@
 # the Mac out). The phone is driven entirely over USB ssh, so always bring
 # sshd back after boot.
 sudo -n systemctl enable --now sshd.service 2>/dev/null || true
-# keep the USB link's DHCP router-less so the Mac never routes via the phone
-true
+# Tell the bootloader this slot booted, or it falls back to Android after 7 boots.
+~/.local/bin/fajita-slot-ok || true

@@ -27,6 +27,7 @@ phone/waybar.service:.config/systemd/user/waybar.service
 phone/fajita-osk-start:.local/bin/fajita-osk-start
 phone/fajita-osk-primer:.local/bin/fajita-osk-primer
 phone/fajita-osk-toggle:.local/bin/fajita-osk-toggle
+phone/fajita-slot-ok:.local/bin/fajita-slot-ok
 phone/fajita-second-bar:.local/bin/fajita-second-bar
 phone/hooks/post-boot:.config/omarchy/hooks/post-boot
 phone/apply-shell-patches.sh:.local/bin/apply-shell-patches.sh

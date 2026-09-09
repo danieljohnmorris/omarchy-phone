@@ -66,9 +66,9 @@ ssh $PH 'cp -rn /etc/skel/. ~/; cp /etc/skel/.bashrc ~/.bashrc
 echo "== keyboard toggle bar widget (squeekboard auto-show is unreliable on Hyprland)"
 ssh $PH 'mkdir -p ~/.config/omarchy/plugins/fajita.keyboard ~/.local/bin'
 scp -q "$HERE/phone/plugins/fajita.keyboard/manifest.json" "$HERE/phone/plugins/fajita.keyboard/BarWidget.qml" $PH:~/.config/omarchy/plugins/fajita.keyboard/
-scp -q "$HERE/phone/fajita-osk-toggle" "$HERE/phone/fajita-osk-start" $PH:~/.local/bin/
+scp -q "$HERE/phone/fajita-osk-toggle" "$HERE/phone/fajita-osk-start" "$HERE/phone/fajita-slot-ok" $PH:~/.local/bin/
 scp -q "$HERE/phone/squeekboard.service" $PH:~/.config/systemd/user/
-ssh $PH 'chmod +x ~/.local/bin/fajita-osk-toggle ~/.local/bin/fajita-osk-start
+ssh $PH 'chmod +x ~/.local/bin/fajita-osk-toggle ~/.local/bin/fajita-osk-start ~/.local/bin/fajita-slot-ok
   # squeekboard must bind while a focused text client exists (Hyprland 0.56 IME relay quirk); the
   # service primes that with a throwaway terminal. Do NOT start it from Hyprland exec/autostart.lua.
   systemctl --user daemon-reload; systemctl --user enable squeekboard.service'

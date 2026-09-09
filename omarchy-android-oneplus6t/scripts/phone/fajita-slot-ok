@@ -1,0 +1,21 @@
+#!/bin/bash
+# Mark the booted A/B slot successful so the bootloader stops counting down.
+#
+# The OnePlus 6T keeps Qualcomm's A/B state in GPT attribute bits on boot_a
+# and boot_b: 48-49 priority, 50 active, 51-53 retry count, 54 successful,
+# 55 unbootable. Android's init marks its slot successful after boot; nothing
+# in this install did, so every reboot burned one of the 7 retries and the
+# bootloader then fell back to the other slot, which still held OxygenOS.
+# The kernel command line carries no slot suffix here, so the active bit
+# decides which slot this is. Run by the post-boot hook.
+set -uo pipefail
+for slot in a b; do
+  dev=$(readlink -f "/dev/disk/by-partlabel/boot_$slot") || continue
+  disk=${dev%%[0-9]*}; num=${dev##*[!0-9]}
+  attrs=$(sudo -n sfdisk --part-attrs "$disk" "$num" 2>/dev/null) || continue
+  attrs=${attrs#GUID:}
+  case ",$attrs," in *,50,*) ;; *) continue ;; esac
+  prio=$(printf '%s' "$attrs" | tr ',' '\n' | grep -E '^(48|49)$' | paste -sd, -)
+  sudo -n sfdisk --part-attrs "$disk" "$num" "GUID:${prio:+$prio,}50,51,52,53,54" >/dev/null 2>&1 \
+    && echo "slot $slot marked successful"
+done

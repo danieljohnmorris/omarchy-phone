@@ -1,8 +1,9 @@
 # Omarchy ports
 
-I put [Omarchy](https://omarchy.org) on a OnePlus 6T, replacing Android
-entirely. It boots Arch Linux ARM with a mainline kernel, then Hyprland, then
-Omarchy's own shell on top of that.
+I put [Omarchy](https://omarchy.org) on a OnePlus 6T. It boots Arch Linux ARM
+with a mainline kernel instead of Android, then Hyprland, then Omarchy's own
+shell on top of that. Android's system partitions are still on the device; only
+a boot slot and the data partition are overwritten.
 
 There's a folder per device with the build scripts, the config that lands on the
 phone, and the patches that make a desktop shell work with a finger.

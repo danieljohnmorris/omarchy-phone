@@ -8,3 +8,8 @@
 -- 315px, so 518x640 fills the width and leaves room above the keys.
 o.window({ tag = "floating-window" }, { size = { 518, 640 } })
 o.window("org.omarchy.about", { size = { 518, 640 } })
+
+-- Hyprland's own "Support Hyprland" popup is an internal surface, not a client
+-- window, so no rule can resize it. It is ~900px wide and its close button is
+-- off the phone's screen. Sponsor upstream from a laptop instead.
+hl.config({ ecosystem = { no_donation_nag = true } })

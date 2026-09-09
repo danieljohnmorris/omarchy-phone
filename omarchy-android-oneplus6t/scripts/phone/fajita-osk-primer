@@ -25,7 +25,8 @@ primer_addrs() {
 close_all() {
   for _ in $(seq 1 10); do
     a=$(primer_addrs); [ -z "$a" ] && return 0
-    for x in $a; do hyprctl dispatch closewindow "address:$x" >/dev/null 2>&1; done
+    # Hyprland 0.56 evaluates `hyprctl dispatch` as Lua; the old text form is a silent no-op.
+    for x in $a; do hyprctl dispatch "hl.dsp.window.close({ window = \"address:$x\" })" >/dev/null 2>&1; done
     sleep 1
   done
   pkill -f "foot --app-id $ID" 2>/dev/null
@@ -34,7 +35,7 @@ close_all() {
 park() {
   for _ in $(seq 1 10); do
     a=$(primer_addrs); [ -z "$a" ] && return 0
-    for x in $a; do hyprctl dispatch movetoworkspacesilent "special:osk,address:$x" >/dev/null 2>&1; done
+    for x in $a; do hyprctl dispatch "hl.dsp.window.move({ workspace = \"special:osk\", follow = false, window = \"address:$x\" })" >/dev/null 2>&1; done
     hyprctl clients -j 2>/dev/null | python3 -c \
       'import sys,json;c=[x for x in json.load(sys.stdin) if x.get("class")=="'"$ID"'"];sys.exit(0 if c and all(x["workspace"]["name"]=="special:osk" for x in c) else 1)' && return 0
     sleep 1
