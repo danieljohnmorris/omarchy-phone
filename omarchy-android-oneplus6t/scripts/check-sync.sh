@@ -43,6 +43,7 @@ phone/bar-order.service:.config/systemd/user/bar-order.service
 phone/omarchy-update.service:.config/systemd/user/omarchy-update.service
 phone/omarchy-update.timer:.config/systemd/user/omarchy-update.timer
 phone/omarchy-menu.jsonc:.config/omarchy/extensions/omarchy-menu.jsonc
+phone/chromium-flags.conf:.config/chromium-flags.conf
 omarchy-packages.txt:.local/share/fajita/omarchy-packages.txt
 repack-noarch.sh:.local/bin/repack-noarch.sh
 "

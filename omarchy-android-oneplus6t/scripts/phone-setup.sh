@@ -87,6 +87,11 @@ ssh $PH 'mkdir -p ~/.config/omarchy'
 scp -q "$HERE/phone/omarchy/shell.json" "$HERE/phone/omarchy/shell.toml" $PH:.config/omarchy/
 ssh $PH 'sudo systemctl restart getty@tty1'
 
+# Chromium's first launch asks gcr-prompter to create a keyring, an unanswerable
+# two-password dialog on a device with no keyboard. The flags file uses
+# --password-store=basic instead; see the comment in it.
+scp -q "$HERE/phone/chromium-flags.conf" $PH:.config/chromium-flags.conf
+
 echo "== phone housekeeping: Arch maintenance jobs peg this CPU for minutes after boot"
 ssh $PH 'sudo systemctl mask man-db.timer man-db.service plocate-updatedb.timer plocate-updatedb.service shadow.timer archlinux-keyring-wkd-sync.timer >/dev/null 2>&1 || true
   # suspend never resumes on fajita (s2idle freezes userspace with no wake path)
