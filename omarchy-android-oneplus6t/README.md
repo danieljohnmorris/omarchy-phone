@@ -92,6 +92,20 @@ what doesn't is at the bottom.
   RTC the clock starts at 1970, so stale session directories sort newer than the
   live one and scripts silently drive a dead compositor. Use `hyprctl instances`.
 
+## Suspend (not working)
+
+`systemctl suspend` is masked. s2idle is the only state the kernel offers, and
+entering it freezes userspace for good: the PMIC RTC alarm and the power key are
+both registered wake sources and neither brings it back, while the kernel keeps
+answering ping and accepting TCP on port 22. Only a 12 s power-button hold
+recovers the phone, and `journalctl -b -1` ends at `PM: suspend entry (s2idle)`
+because journald is frozen with everything else. Either the wake interrupt never
+reaches the s2idle loop or resume hangs in a driver; the journal cannot tell
+them apart. `scripts/suspend-probe.sh` sets the next attempt up so the kernel
+log stays on the panel (fbcon, `console_suspend=N`, `pm_debug_messages`).
+Until this is solved, Menu > Suspend is "Screen off" (DPMS) and the power key
+wakes it: see `fajita-screen-off` and `fajita-power-key`.
+
 ## Configuration
 
 Everything adjustable lives in `config.env` (user, password, USB subnet, locale,
