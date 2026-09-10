@@ -9,6 +9,15 @@
     "when": "true",
     "action": "fajita-screen-off"
   },
+  // Shutdown is hidden: a clean poweroff cannot be undone from the phone.
+  // The power button will not cold-start it afterwards (OPH-16), so the row
+  // was a one-way door with no on-device recovery. `when` is a shell test and
+  // the row only renders on exit 0, so "false" removes it without patching
+  // Omarchy. Use Reboot to get a fresh boot; to power off deliberately, run
+  // `systemctl poweroff` over ssh and be ready to recover from the host.
+  "system.shutdown": {
+    "when": "false"
+  },
   "system.bootloader": {
     "icon": "󰚥",
     "label": "Reboot to bootloader",

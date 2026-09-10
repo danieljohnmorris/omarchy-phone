@@ -55,6 +55,30 @@ what doesn't is at the bottom.
   and `bindings.lua` rebinds the power key to `fajita-power-key`: wake if the
   panel is off, otherwise Omarchy's power menu. `key_press_enables_dpms` and
   `mouse_move_enables_dpms` are off so only the power key wakes it.
+- **Never shut the phone down: a clean poweroff cannot be undone with the
+  power button.** After `systemctl poweroff` (or Menu > Shutdown, which
+  `cfacc3b` made work) a normal Power press does nothing at all — no vibrate,
+  no network, no fastboot, and no USB descriptor of any kind for over two
+  minutes, so it is not EDL either. Battery is not the cause: fastboot
+  reported `battery-voltage: 4325` and `battery-soc-ok: yes`. Recovery is
+  cable-in (the PMIC cold-boots on charger attach), a 20-25 s Power hold, or
+  the fastboot combo followed by `fastboot reboot`. The `system.shutdown` row
+  is therefore hidden with `"when": "false"` in the menu extension, which also
+  blanks its action, so the trap cannot be reached from the phone; use
+  `fajita-screen-off`, or `systemctl poweroff` over ssh when a real power-off
+  is wanted and a host is at hand to recover it.
+- **The power key reaches logind and then dies there, so a dark panel looks
+  like a dead phone.** logind logged 16 `Power key pressed short` events across
+  one 5 h 44 m boot while `fajita-power-key` ran zero times. `HandlePowerKey`
+  is `ignore` in two places (`10-fajita-nosuspend.conf` and
+  `10-ignore-power-button.conf`), which correctly defers to Hyprland, but the
+  compositor that owns the panel had **no keyboard devices and no bind
+  referencing power** (`hyprctl devices`, `hyprctl binds`) — `bindings.lua`'s
+  `XF86PowerOff` bind was never loaded. Suspect the login compositor, whose
+  input devices `5073a35` hides and which never sources `bindings.lua`; the
+  wake path is therefore inert whenever the session is not fully logged in.
+  Diagnose with `journalctl | grep "Power key"` versus `hyprctl binds`, never
+  by pressing the button.
 - **Fastboot on a Mac needs a USB 2.0-only cable**, the sort that comes with a
   phone. USB 3 cables work fine for adb, then the bootloader silently fails to
   appear and you assume the phone is broken.
