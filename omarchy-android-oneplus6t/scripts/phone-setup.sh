@@ -92,6 +92,24 @@ ssh $PH 'sudo systemctl restart getty@tty1'
 # --password-store=basic instead; see the comment in it.
 scp -q "$HERE/phone/chromium-flags.conf" $PH:.config/chromium-flags.conf
 
+# GTK's text-scaling-factor must stay 1.0: Chromium sizes its Wayland buffer as
+# logical x text-scale and Hyprland crops the excess, so any other value cuts
+# web pages off on the right. Readability comes from Chromium's own page zoom
+# instead, which scales layout and cannot clip. The bar and terminals are
+# unaffected either way: they read shell.toml [font] base-size and their own
+# point sizes, not this factor. `omarchy display text size N` rewrites the
+# factor, so re-run this block after using it.
+ssh $PH 'export XDG_RUNTIME_DIR=/run/user/1001
+  gsettings set org.gnome.desktop.interface text-scaling-factor 1.0 || true
+  pkill -x chromium 2>/dev/null; sleep 2
+  prefs=~/.config/chromium/Default/Preferences
+  [ -f "$prefs" ] && python3 -c "
+import json,math,sys
+p=sys.argv[1]
+d=json.load(open(p))
+d.setdefault(\"partition\",{})[\"default_zoom_level\"]={\"0\":math.log(1.35)/math.log(1.2)}
+json.dump(d,open(p,\"w\"))" "$prefs" || true'
+
 echo "== phone housekeeping: Arch maintenance jobs peg this CPU for minutes after boot"
 ssh $PH 'sudo systemctl mask man-db.timer man-db.service plocate-updatedb.timer plocate-updatedb.service shadow.timer archlinux-keyring-wkd-sync.timer >/dev/null 2>&1 || true
   # suspend never resumes on fajita (s2idle freezes userspace with no wake path)

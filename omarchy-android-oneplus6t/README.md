@@ -64,6 +64,33 @@ what doesn't is at the bottom.
   no keyboard, and the on-screen keyboard covers it. The phone's copy of that
   file ships in the repo with `--password-store=basic` instead. The file is not
   owned by any package, so nothing but `check-sync.sh` would have caught it.
+- **Web pages are cut off on the right unless GTK text scaling is exactly
+  1.0.** Chromium sizes its Wayland buffer as logical size x
+  `org.gnome.desktop.interface text-scaling-factor`, and Hyprland crops the
+  overflow, so at the phone's 1.6364 (set by `omarchy display text size` for a
+  5.5in panel) about a third of every page painted off-screen. It is not a
+  layout problem: `innerWidth`, `clientWidth` and `scrollWidth` were all 480
+  with nothing overflowing, and a local page with a full-width box was clipped
+  too. `--force-device-scale-factor` does not help — it moves
+  `devicePixelRatio`, not the widget scale that sizes the surface. Setting the
+  factor to 1.0 costs nothing elsewhere: the bar reads `shell.toml [font]
+  base-size` (20) and the terminals their own point size (15), both unaffected.
+  Readability comes back through Chromium's page zoom (1.35x in
+  `Default/Preferences`), which scales layout and so cannot clip. Do not raise
+  GTK `font-name` for this: it inflates some widget strings and not others, so
+  a tab title renders huge next to a small URL. Re-run the block in
+  `phone-setup.sh` after any `omarchy display text size`, which rewrites the
+  factor.
+- **Chromium announces itself as a desktop.** The default UA is
+  `X11; Linux x86_64` and `navigator.userAgentData.mobile` is false, so sites
+  serve their desktop layout into a 480 CSS-px viewport — Wikipedia's Vector
+  skin wants ~1000px and ran off the edge. The flags file sets a Pixel 7 UA,
+  which brings up the mobile skin. **The value must be quoted**: the launcher
+  splits that file on whitespace, so an unquoted UA arrives as a dozen
+  arguments and Chromium opens the fragments as URLs (the window title comes
+  up as `(linux;`). Only the UA *string* changes; Chromium has no flag for
+  User-Agent Client Hints, so `userAgentData.mobile` stays false and sites
+  sniffing UA-CH (mostly Google's own) still serve desktop.
 - **`gum` is keyboard-only, so no yes/no prompt can be tapped.** gum 2.0.0
   emits no mouse-reporting sequences at all (verified: 464 bytes of output from
   `gum confirm`, none of `?1000h`/`?1002h`/`?1003h`/`?1006h`), so touch cannot
