@@ -1,0 +1,17 @@
+[Unit]
+Description=Empty-workspace launch hint (fajita)
+PartOf=graphical-session.target
+After=graphical-session.target
+# never loop: a broken QML file must stay broken rather than respawn forever
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/quickshell -p %h/.config/fajita/empty-hint.qml
+Restart=on-failure
+RestartSec=10
+Slice=app-graphical.slice
+
+[Install]
+WantedBy=graphical-session.target

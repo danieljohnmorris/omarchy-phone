@@ -81,12 +81,20 @@ ssh $PH 'sudo install -m755 /tmp/gum /usr/local/bin/gum'
 # the menu runs actions under `bash -lc` so the login PATH reaches it.
 ssh $PH 'cat > /tmp/omarchy-theme-switcher' < "$HERE/phone/omarchy-theme-switcher"
 ssh $PH 'sudo install -m755 /tmp/omarchy-theme-switcher /usr/local/bin/omarchy-theme-switcher'
-scp -q "$HERE/phone/squeekboard.service" "$HERE/phone/osk-fit.service" $PH:~/.config/systemd/user/
+scp -q "$HERE/phone/squeekboard.service" "$HERE/phone/osk-fit.service" "$HERE/phone/empty-hint.service" $PH:~/.config/systemd/user/
+
+# An empty workspace draws nothing on a tiling compositor and there is no
+# keyboard to press SUPER+RETURN with, so it looks exactly like a dead phone.
+# A standalone Quickshell process draws the empty state and a tappable
+# launcher. Standalone, not a plugin under /usr/share/omarchy, so a pacman
+# upgrade cannot overwrite it and apply-shell-patches.sh need not know about it.
+ssh $PH 'mkdir -p ~/.config/fajita'
+scp -q "$HERE/phone/empty-hint.qml" $PH:.config/fajita/empty-hint.qml
 ssh $PH 'chmod +x ~/.local/bin/fajita-osk-toggle ~/.local/bin/fajita-osk-start ~/.local/bin/fajita-osk-fit ~/.local/bin/fajita-slot-ok ~/.local/bin/fajita-screen-off ~/.local/bin/fajita-power-key
   # squeekboard must bind while a focused text client exists (Hyprland 0.56 IME relay quirk); the
   # service primes that with a throwaway terminal. Do NOT start it from Hyprland exec/autostart.lua.
   # osk-fit unfloats floating windows while the keyboard is up so they are not covered by it.
-  systemctl --user daemon-reload; systemctl --user enable squeekboard.service osk-fit.service'
+  systemctl --user daemon-reload; systemctl --user enable squeekboard.service osk-fit.service empty-hint.service'
 
 # The bar layout (keyboard toggle on the right, clock moved to row two) and the
 # text size ship as captured files rather than being edited in place.
