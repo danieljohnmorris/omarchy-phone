@@ -99,6 +99,24 @@ what doesn't is at the bottom.
   Quickshell picker, which is touch-driven, and `exec`s the real
   `/usr/bin/gum` for everything else. It must be in `/usr/local/bin`:
   `~/.local/bin` sits *after* `/usr/bin` in the phone's PATH.
+- **The theme and background pickers are laid out in fixed laptop pixels.**
+  `ImagePicker.qml` hardcodes a 768x475 preview plus thirteen 108px side
+  slices, roughly 1780px, so on a 540px panel only a slice of one preview is
+  on screen and nothing can be aimed at. `apply-shell-patches.sh` adds a
+  `fajitaFit` factor, `min(1, (panel - 100) / 768)`, and scales every one of
+  those constants by it, so the picker fits any panel and stays untouched on a
+  laptop. Re-run that script after any omarchy package upgrade.
+- **Theme previews are 1800x1012 desktop screenshots.** They are illegible at
+  540 wide and show the thing that does not change on a phone; each theme also
+  ships 2-9 wallpapers, which are what is actually visible. The
+  `/usr/local/bin/omarchy-theme-switcher` shim builds its preview cache from
+  each theme's first wallpaper instead, then hands the directory to the same
+  `omarchy-menu-images`.
+- **Theme is mirrored into the System menu.** With no keyboard the only menu
+  that can be summoned is the power key's `omarchy-menu toggle system`, so
+  `omarchy-menu.jsonc` adds `system.theme` with Omarchy's own `style.theme`
+  action. The `system.` prefix is what puts a row in that group: the merge
+  infers `parent` from the id.
 - **Suspend never resumes, so Menu > Suspend is "Screen off".** The
   `system.suspend` menu row is overridden to `fajita-screen-off` (DPMS off),
   and `bindings.lua` rebinds the power key to `fajita-power-key`: wake if the

@@ -18,6 +18,16 @@
   "system.shutdown": {
     "when": "false"
   },
+  // Theme, normally under Style, mirrored into System so it is reachable from
+  // the power key: fajita-power-key opens `omarchy-menu toggle system`, which
+  // is the only menu a phone with no keyboard can summon. Same action as
+  // Omarchy's style.theme row; the id prefix is what puts it in this group.
+  "system.theme": {
+    "icon": "\udb83\ude0c",
+    "label": "Theme",
+    "description": "Wallpaper previews, tap to apply",
+    "action": "theme=$(omarchy-theme-switcher); [[ -n $theme ]] && omarchy-theme-set \"$theme\""
+  },
   "system.bootloader": {
     "icon": "󰚥",
     "label": "Reboot to bootloader",

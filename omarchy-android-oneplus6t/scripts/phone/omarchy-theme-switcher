@@ -1,0 +1,72 @@
+#!/bin/bash
+# /usr/local/bin/omarchy-theme-switcher on the phone, ahead of /usr/bin on PATH.
+#
+# Upstream previews each theme with its `preview.png`: an 1800x1012 screenshot
+# of a laptop desktop, three tiled windows of unreadable text. At phone size
+# that shows nothing about the theme, and it is not what changes on screen when
+# the theme is applied. Every shipped theme also carries a `backgrounds/`
+# directory, so this previews the wallpaper instead, which is both legible at
+# 440px wide and the thing the user actually sees.
+#
+# Upstream's own find_preview already falls back to backgrounds when a theme has
+# no preview file (omarchy-theme-switcher:34), so this only inverts that
+# preference; the cache layout, the `<theme>.<ext>` naming that --print-name
+# turns back into a theme name, and the omarchy-menu-images arguments are
+# upstream's. Kept out of ~/.cache/omarchy/theme-selector so upstream's
+# signature files and ours cannot invalidate each other.
+set -uo pipefail
+
+preload=false
+[[ ${1:-} == "--preload" ]] && preload=true
+
+USER_THEMES_PATH="$HOME/.config/omarchy/themes"
+OMARCHY_THEMES_PATH="${OMARCHY_PATH:-/usr/share/omarchy}/themes"
+preview_dir="${XDG_CACHE_HOME:-$HOME/.cache}/omarchy/theme-selector-fajita/previews"
+
+# Wallpaper first, theme screenshot only as a fallback: the reverse of upstream.
+find_preview() {
+  local theme_path="$1" preview name
+  if [[ -d $theme_path/backgrounds ]]; then
+    preview=$(find -L "$theme_path/backgrounds" -maxdepth 1 -type f \
+      \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \
+         -o -iname '*.gif' -o -iname '*.bmp' \) -print 2>/dev/null | sort | head -n 1)
+    [[ -n $preview ]] && { printf '%s\n' "$preview"; return; }
+  fi
+  for name in preview.png preview.jpg preview.jpeg preview.webp; do
+    preview=$(find -L "$theme_path" -maxdepth 1 -type f -iname "$name" -print -quit 2>/dev/null)
+    [[ -n $preview ]] && { printf '%s\n' "$preview"; return; }
+  done
+}
+
+# Rebuilt every time: 22 symlinks cost about a millisecond, which is cheaper
+# than the signature bookkeeping needed to decide whether to skip it.
+rm -rf "$preview_dir"
+mkdir -p "$preview_dir" || exec /usr/bin/omarchy-theme-switcher "$@"
+
+while IFS= read -r theme_path; do
+  [[ -n $theme_path ]] || continue
+  theme_name=${theme_path##*/}
+  preview=$(find_preview "$theme_path")
+  [[ -n $preview ]] || continue
+  ext=${preview##*.}
+  ln -sfn "$preview" "$preview_dir/$theme_name.${ext,,}"
+done < <(find -L "$USER_THEMES_PATH" "$OMARCHY_THEMES_PATH" -mindepth 1 -maxdepth 1 \
+  \( -type d -o -type l \) -print 2>/dev/null | sort)
+
+# Nothing to show (no themes readable): let upstream handle it rather than
+# opening an empty picker.
+[[ -n $(ls -A "$preview_dir" 2>/dev/null) ]] || exec /usr/bin/omarchy-theme-switcher "$@"
+
+current_theme=$(cat "$HOME/.local/state/omarchy/current/theme.name" 2>/dev/null)
+selected_preview=""
+for ext in png jpg jpeg webp gif bmp; do
+  if [[ -e $preview_dir/$current_theme.$ext ]]; then
+    selected_preview="$preview_dir/$current_theme.$ext"
+    break
+  fi
+done
+
+menu_args=(--print-name --show-labels --filterable --lazy-thumbnails --selected "$selected_preview")
+[[ $preload == true ]] && menu_args+=(--preload)
+
+exec omarchy-menu-images "${menu_args[@]}" "$preview_dir"

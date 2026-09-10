@@ -74,6 +74,13 @@ scp -q "$HERE/phone/fajita-osk-toggle" "$HERE/phone/fajita-osk-start" "$HERE/pho
 # Yes/No cannot be tapped in a terminal.
 ssh $PH 'cat > /tmp/gum' < "$HERE/phone/gum"
 ssh $PH 'sudo install -m755 /tmp/gum /usr/local/bin/gum'
+
+# Theme previews upstream are 1800x1012 desktop screenshots, unreadable at 540
+# wide and not what changes on a phone. This shim builds the preview set from
+# each theme's first wallpaper instead. /usr/local/bin, ahead of /usr/bin, and
+# the menu runs actions under `bash -lc` so the login PATH reaches it.
+ssh $PH 'cat > /tmp/omarchy-theme-switcher' < "$HERE/phone/omarchy-theme-switcher"
+ssh $PH 'sudo install -m755 /tmp/omarchy-theme-switcher /usr/local/bin/omarchy-theme-switcher'
 scp -q "$HERE/phone/squeekboard.service" "$HERE/phone/osk-fit.service" $PH:~/.config/systemd/user/
 ssh $PH 'chmod +x ~/.local/bin/fajita-osk-toggle ~/.local/bin/fajita-osk-start ~/.local/bin/fajita-osk-fit ~/.local/bin/fajita-slot-ok ~/.local/bin/fajita-screen-off ~/.local/bin/fajita-power-key
   # squeekboard must bind while a focused text client exists (Hyprland 0.56 IME relay quirk); the
