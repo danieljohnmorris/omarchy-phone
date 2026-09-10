@@ -24,10 +24,12 @@ phone/plugins/fajita.keyboard/BarWidget.qml:.config/omarchy/plugins/fajita.keybo
 phone/waybar/config.jsonc:.config/waybar/config.jsonc
 phone/waybar/style.css:.config/waybar/style.css
 phone/squeekboard.service:.config/systemd/user/squeekboard.service
+phone/osk-fit.service:.config/systemd/user/osk-fit.service
 phone/waybar.service:.config/systemd/user/waybar.service
 phone/fajita-osk-start:.local/bin/fajita-osk-start
 phone/fajita-osk-primer:.local/bin/fajita-osk-primer
 phone/fajita-osk-toggle:.local/bin/fajita-osk-toggle
+phone/fajita-osk-fit:.local/bin/fajita-osk-fit
 phone/fajita-slot-ok:.local/bin/fajita-slot-ok
 phone/fajita-screen-off:.local/bin/fajita-screen-off
 phone/fajita-power-key:.local/bin/fajita-power-key
@@ -70,7 +72,7 @@ while IFS=: read -r repo remote; do
 done <<< "$MAP"
 
 # root-owned files, fetched separately
-for pair in "phone/ttfx:/usr/local/bin/ttfx" "phone/proxy.sh:/etc/profile.d/proxy.sh" "phone/50-fajita-power.rules:/etc/polkit-1/rules.d/50-fajita-power.rules"; do
+for pair in "phone/ttfx:/usr/local/bin/ttfx" "phone/gum:/usr/local/bin/gum" "phone/proxy.sh:/etc/profile.d/proxy.sh" "phone/50-fajita-power.rules:/etc/polkit-1/rules.d/50-fajita-power.rules"; do
   repo=${pair%%:*}; remote=${pair#*:}
   if ssh "$PH" "sudo -n cat $remote" > "$tmp/f" 2>/dev/null; then   # root-owned, some in root-only dirs
     if diff -q "$HERE/$repo" "$tmp/f" >/dev/null 2>&1; then same=$((same+1)); else

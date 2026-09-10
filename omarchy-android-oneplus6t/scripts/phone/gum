@@ -1,0 +1,107 @@
+#!/bin/bash
+# /usr/local/bin/gum on the phone. NOT ~/.local/bin: that sits after /usr/bin
+# in the phone's PATH, so a shim there is never reached. /usr/local/bin is
+# ahead of it, same as the ttfx port.
+#
+# Omarchy asks every yes/no question with `gum confirm` and every pick with
+# `gum choose`, both of which are keyboard-only: gum 2.0.0 emits no mouse
+# reporting sequences at all (no ?1000h/?1002h/?1003h/?1006h), so a finger on
+# the "Yes" button of `omarchy-update` does nothing no matter what the terminal
+# forwards. On a phone with no keyboard that makes the update flow unanswerable
+# without summoning the on-screen keyboard over the very prompt it is answering.
+#
+# These two verbs are therefore re-implemented on omarchy-menu-select, the
+# Quickshell selector the rest of the phone UI already uses, which is built for
+# touch. Every other verb (style, format, spin, log, input, multi-select
+# choose) is passed straight through to the real gum.
+
+set -uo pipefail
+
+# Absolute, so this cannot recurse into itself however PATH is ordered.
+real_gum=/usr/bin/gum
+
+passthrough() { exec "$real_gum" "$@"; }
+
+# The selector is only usable when the shell is running and a compositor is
+# there to summon it into. Anything else (ssh, tty, early boot) gets real gum.
+# OMARCHY_PATH is checked because omarchy-shell hard-fails without it, and
+# under `set -euo pipefail` that aborts omarchy-menu-select before it writes a
+# selection, which would otherwise be indistinguishable from the user
+# cancelling and would make every prompt silently unanswerable.
+usable() {
+  [[ -n ${WAYLAND_DISPLAY:-} && -n ${OMARCHY_PATH:-} ]] &&
+    command -v omarchy-menu-select >/dev/null &&
+    command -v omarchy-shell >/dev/null
+}
+
+verb=${1:-}
+usable || passthrough "$@"
+
+case "$verb" in
+  confirm)
+    shift
+    affirmative="Yes"
+    negative="No"
+    default=yes
+    prompt=""
+    while (( $# > 0 )); do
+      case "$1" in
+        --affirmative) affirmative=${2:-$affirmative}; shift 2 || shift ;;
+        --affirmative=*) affirmative=${1#*=}; shift ;;
+        --negative) negative=${2:-$negative}; shift 2 || shift ;;
+        --negative=*) negative=${1#*=}; shift ;;
+        --default=false|--default=no|--default=0) default=no; shift ;;
+        --default=*|--default) [[ $1 == --default ]] && shift; shift ;;
+        --timeout|--prompt-*|--selected-*|--unselected-*) shift 2 || shift ;;
+        --*) shift ;;
+        *) prompt=$1; shift ;;
+      esac
+    done
+    [[ -n $prompt ]] || prompt="Continue?"
+
+    # Offer the default first so the top row is the safe one, and so a stray
+    # tap lands where gum's own highlight would have been.
+    if [[ $default == yes ]]; then
+      rows=("$affirmative" "$negative")
+    else
+      rows=("$negative" "$affirmative")
+    fi
+
+    choice=$(omarchy-menu-select "$prompt" "${rows[@]}") || exit 130
+    [[ $choice == "$affirmative" ]] && exit 0
+    exit 1
+    ;;
+
+  choose)
+    shift
+    header=""
+    options=()
+    # Multi-select has no equivalent in the single-pick selector, so it and any
+    # unrecognised flag fall back to real gum rather than answering wrongly.
+    args=("$@")
+    for a in "${args[@]}"; do
+      case "$a" in
+        --no-limit|--limit=[2-9]*|--limit) passthrough choose "${args[@]}" ;;
+      esac
+    done
+    while (( $# > 0 )); do
+      case "$1" in
+        --header) header=${2:-}; shift 2 || shift ;;
+        --header=*) header=${1#*=}; shift ;;
+        --selected|--limit|--height|--cursor|--timeout) shift 2 || shift ;;
+        --*) shift ;;
+        *) options+=("$1"); shift ;;
+      esac
+    done
+    if (( ${#options[@]} == 0 )) && [[ ! -t 0 ]]; then
+      mapfile -t options
+    fi
+    (( ${#options[@]} > 0 )) || passthrough choose "${args[@]}"
+    [[ -n $header ]] || header="Choose"
+    omarchy-menu-select "$header" "${options[@]}"
+    ;;
+
+  *)
+    passthrough "$@"
+    ;;
+esac

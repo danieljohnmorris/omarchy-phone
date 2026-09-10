@@ -66,12 +66,20 @@ ssh $PH 'cp -rn /etc/skel/. ~/; cp /etc/skel/.bashrc ~/.bashrc
 echo "== keyboard toggle bar widget (squeekboard auto-show is unreliable on Hyprland)"
 ssh $PH 'mkdir -p ~/.config/omarchy/plugins/fajita.keyboard ~/.local/bin'
 scp -q "$HERE/phone/plugins/fajita.keyboard/manifest.json" "$HERE/phone/plugins/fajita.keyboard/BarWidget.qml" $PH:~/.config/omarchy/plugins/fajita.keyboard/
-scp -q "$HERE/phone/fajita-osk-toggle" "$HERE/phone/fajita-osk-start" "$HERE/phone/fajita-slot-ok" "$HERE/phone/fajita-screen-off" "$HERE/phone/fajita-power-key" $PH:~/.local/bin/
-scp -q "$HERE/phone/squeekboard.service" $PH:~/.config/systemd/user/
-ssh $PH 'chmod +x ~/.local/bin/fajita-osk-toggle ~/.local/bin/fajita-osk-start ~/.local/bin/fajita-slot-ok ~/.local/bin/fajita-screen-off ~/.local/bin/fajita-power-key
+scp -q "$HERE/phone/fajita-osk-toggle" "$HERE/phone/fajita-osk-start" "$HERE/phone/fajita-osk-fit" "$HERE/phone/fajita-slot-ok" "$HERE/phone/fajita-screen-off" "$HERE/phone/fajita-power-key" $PH:~/.local/bin/
+# gum is a shim, not a fajita-* script, and it goes to /usr/local/bin because
+# ~/.local/bin sits AFTER /usr/bin in the phone's PATH (a shim there is dead
+# code). It routes confirm and single-select choose to the touch-driven
+# Quickshell menu, because gum emits no mouse-enable sequence at all and its
+# Yes/No cannot be tapped in a terminal.
+ssh $PH 'cat > /tmp/gum' < "$HERE/phone/gum"
+ssh $PH 'sudo install -m755 /tmp/gum /usr/local/bin/gum'
+scp -q "$HERE/phone/squeekboard.service" "$HERE/phone/osk-fit.service" $PH:~/.config/systemd/user/
+ssh $PH 'chmod +x ~/.local/bin/fajita-osk-toggle ~/.local/bin/fajita-osk-start ~/.local/bin/fajita-osk-fit ~/.local/bin/fajita-slot-ok ~/.local/bin/fajita-screen-off ~/.local/bin/fajita-power-key
   # squeekboard must bind while a focused text client exists (Hyprland 0.56 IME relay quirk); the
   # service primes that with a throwaway terminal. Do NOT start it from Hyprland exec/autostart.lua.
-  systemctl --user daemon-reload; systemctl --user enable squeekboard.service'
+  # osk-fit unfloats floating windows while the keyboard is up so they are not covered by it.
+  systemctl --user daemon-reload; systemctl --user enable squeekboard.service osk-fit.service'
 
 # The bar layout (keyboard toggle on the right, clock moved to row two) and the
 # text size ship as captured files rather than being edited in place.

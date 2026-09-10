@@ -1,13 +1,18 @@
 -- ~/.config/hypr/looknfeel.lua on the phone. Loaded after Omarchy's defaults.
 
--- Omarchy sizes every floating window (update, TUIs, About) at 875x600 for a
--- laptop. The phone is 540 logical pixels wide, so that overflowed the screen
--- by a third and the update prompt's "press any key" sat off the right edge.
--- Later rules for the same window win, so these replace the default size.
--- Logical screen is 540x1170 and the on-screen keyboard reserves the bottom
--- 315px, so 518x640 fills the width and leaves room above the keys.
-o.window({ tag = "floating-window" }, { size = { 518, 640 } })
-o.window("org.omarchy.about", { size = { 518, 640 } })
+-- Omarchy sizes every floating window (update, TUIs, About) at 875x600, which
+-- is laptop shaped. The phone is 540x1170 logical, so the width overflowed by
+-- a third and the update prompt's "press any key" sat off the right edge.
+-- Later rules for the same window win, so these replace the size only:
+-- Omarchy's `center = true` still applies and the whole band stays usable.
+--
+-- The keyboard is handled outside the config, by fajita-osk-fit: it drops the
+-- floating bit while squeekboard is up, so Hyprland tiles the window into the
+-- reserved-aware area (516x754 at y=89, clear of the OSK top at y=855) and
+-- restores it afterwards. Sizing for the keyboard here instead would waste
+-- the bottom 315px whenever it is down, which is nearly always.
+o.window({ tag = "floating-window" }, { size = { 518, 960 } })
+o.window("org.omarchy.about", { size = { 518, 960 } })
 
 -- Hyprland's own "Support Hyprland" popup is an internal surface, not a client
 -- window, so no rule can resize it. It is ~900px wide and its close button is

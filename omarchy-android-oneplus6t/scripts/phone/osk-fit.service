@@ -1,0 +1,18 @@
+[Unit]
+Description=Unfloat floating windows while the on-screen keyboard is up
+PartOf=graphical-session.target
+After=graphical-session.target
+# The watcher is a busctl monitor pipe: if it dies it should come back, but a
+# compositor that never appears must not spin.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/fajita-osk-fit
+Restart=on-failure
+RestartSec=5
+Slice=app-graphical.slice
+
+[Install]
+WantedBy=graphical-session.target

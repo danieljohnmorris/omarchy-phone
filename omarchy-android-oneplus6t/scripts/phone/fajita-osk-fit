@@ -1,0 +1,106 @@
+#!/bin/bash
+# Keep floating windows clear of the on-screen keyboard, by untiling nothing
+# and unfloating everything. Installed to ~/.local/bin.
+#
+# Hyprland reserves the keyboard's space (`hyprctl monitors`: reserved
+# [0, 77, 0, 315] while squeekboard is up) and re-fits TILED windows into what
+# is left, but floating windows keep the geometry they were given. Omarchy's
+# update prompt, TUIs and About are all floating and sized for a laptop, and a
+# floating window is centered when it opens - while the keyboard is still
+# hidden - so it lands in the middle of y 77..1170, and the keyboard then
+# covers its bottom third. Measured: 518x640 centered at y=304 ends at 944,
+# i.e. 89px of the confirm line sits under the keys.
+#
+# Rather than hard-code a smaller size and position (which wastes the bottom
+# 315px whenever the keyboard is down, i.e. nearly always), this drops the
+# floating bit for as long as the keyboard is visible and puts it back after.
+# Hyprland then tiles the window into the reserved-aware area for free:
+# verified on device, 518x640 at y=304 becomes 516x754 at y=89, bottom edge
+# 843 against an OSK top of 855.
+#
+# squeekboard announces itself on DBus (PropertiesChanged for Visible on
+# /sm/puri/OSK0), and it raises itself on text-input focus without going
+# through fajita-osk-toggle, so this watches the signal rather than the script.
+set -u
+export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+
+hypr_sig() {
+  # hyprctl instances lists only live compositors; stale $XDG_RUNTIME_DIR/hypr/*
+  # dirs from earlier sessions can sort newer (the phone boots with a 1970 clock).
+  hyprctl instances -j 2>/dev/null | python3 -c \
+    'import sys,json;a=json.load(sys.stdin);print(a[0]["instance"] if a else "")' 2>/dev/null
+}
+
+for _ in $(seq 1 60); do sig=$(hypr_sig); [ -n "$sig" ] && break; sleep 1; done
+export HYPRLAND_INSTANCE_SIGNATURE=$sig
+export WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-$(ls "$XDG_RUNTIME_DIR" 2>/dev/null | grep -E '^wayland-[0-9]+$' | head -1)}
+for _ in $(seq 1 30); do hyprctl version >/dev/null 2>&1 && break; sleep 1; done
+
+# --json=short gives one JSON object per line per signal (systemd 250+).
+exec busctl --user monitor --json=short \
+  --match "type=signal,path=/sm/puri/OSK0,interface=org.freedesktop.DBus.Properties,member=PropertiesChanged" \
+  2>/dev/null | python3 -u -c '
+import json, subprocess, sys
+
+# Addresses this script unfloated, so the keyboard going away restores exactly
+# those and never floats a window the user had tiled.
+unfloated = []
+
+def hyprctl(*args):
+    return subprocess.run(["hyprctl", *args], capture_output=True, text=True).stdout
+
+def clients():
+    try:
+        return json.loads(hyprctl("clients", "-j") or "[]")
+    except json.JSONDecodeError:
+        return []
+
+def toggle_float(addr):
+    # Hyprland 0.56 evaluates `hyprctl dispatch` as Lua; the old text form is a
+    # silent no-op. `window.float` is a toggle, which is why the set above is
+    # tracked rather than recomputed.
+    hyprctl("dispatch", f"hl.dsp.window.float({{ window = \"address:{addr}\" }})")
+
+def on_show():
+    global unfloated
+    unfloated = []
+    for c in clients():
+        # The OSK primer lives parked on a special workspace and must not move.
+        if not c.get("floating") or c.get("class") == "fajita-osk-primer":
+            continue
+        if str(c.get("workspace", {}).get("name", "")).startswith("special:"):
+            continue
+        toggle_float(c["address"])
+        unfloated.append(c["address"])
+
+def on_hide():
+    global unfloated
+    live = {c["address"] for c in clients()}
+    for addr in unfloated:
+        if addr in live:          # closed while the keyboard was up: nothing to restore
+            toggle_float(addr)
+    unfloated = []
+
+def visible(msg):
+    # busctl --json=short wraps every variant: data is
+    # ["sm.puri.OSK0", {"Visible": {"type": "b", "data": true}}, []]
+    payload = msg.get("payload", {}).get("data", [])
+    if len(payload) < 2 or payload[0] != "sm.puri.OSK0":
+        return None
+    variant = payload[1].get("Visible")
+    return variant.get("data") if isinstance(variant, dict) else None
+
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        msg = json.loads(line)
+    except json.JSONDecodeError:
+        continue
+    v = visible(msg)
+    if v is True:
+        on_show()
+    elif v is False:
+        on_hide()
+'
