@@ -47,9 +47,31 @@ what doesn't is at the bottom.
 - **Hyprland's donation popup is not a window.** It is an internal surface
   ~900px wide with its close button off the phone's screen, so no window rule
   can size it. `ecosystem.no_donation_nag = true` in `looknfeel.lua`.
-- **Omarchy floats are 875x600.** On a 540-wide phone the update prompt's
-  "press any key" sat off the right edge. `looknfeel.lua` re-sizes the
-  `floating-window` tag and the About window to 518x640.
+- **Omarchy floats are 875x600 and centred, which is laptop shaped.** On a
+  540x1170 phone the width overflowed by a third, so the update prompt's
+  "press any key" sat off the right edge; `looknfeel.lua` sizes the
+  `floating-window` tag and the About window to 518x960. Centring is left
+  alone: a floating window centred in the 1093px band ends at y=944 while
+  the on-screen keyboard starts at 855, so its bottom 89px — the line you
+  have to read — hid behind the keys. Shrinking cannot fix that, because a
+  centred window just recentres lower. `fajita-osk-fit` watches
+  `PropertiesChanged` on `sm.puri.OSK0` `Visible` and drops the floating bit
+  while the keyboard is up: Hyprland then tiles the window into the reserved
+  area (`[12, 89] [516, 754]`, bottom 843) and does the arithmetic itself.
+- **Chromium's first launch demands a new keyring.** Omarchy's
+  `chromium-flags.conf` sets `--password-store=gnome-libsecret`, so gcr-prompter
+  pops a two-password "choose a password" dialog — unanswerable on a phone with
+  no keyboard, and the on-screen keyboard covers it. The phone's copy of that
+  file ships in the repo with `--password-store=basic` instead. The file is not
+  owned by any package, so nothing but `check-sync.sh` would have caught it.
+- **`gum` is keyboard-only, so no yes/no prompt can be tapped.** gum 2.0.0
+  emits no mouse-reporting sequences at all (verified: 464 bytes of output from
+  `gum confirm`, none of `?1000h`/`?1002h`/`?1003h`/`?1006h`), so touch cannot
+  reach `omarchy-update`'s Yes. `/usr/local/bin/gum` is a shim that routes
+  `confirm` and single-select `choose` to `omarchy-menu-select`, Omarchy's
+  Quickshell picker, which is touch-driven, and `exec`s the real
+  `/usr/bin/gum` for everything else. It must be in `/usr/local/bin`:
+  `~/.local/bin` sits *after* `/usr/bin` in the phone's PATH.
 - **Suspend never resumes, so Menu > Suspend is "Screen off".** The
   `system.suspend` menu row is overridden to `fajita-screen-off` (DPMS off),
   and `bindings.lua` rebinds the power key to `fajita-power-key`: wake if the
