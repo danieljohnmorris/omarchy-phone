@@ -82,6 +82,18 @@ what doesn't is at the bottom.
 - **Fastboot on a Mac needs a USB 2.0-only cable**, the sort that comes with a
   phone. USB 3 cables work fine for adb, then the bootloader silently fails to
   appear and you assume the phone is broken.
+- **`system_profiler SPUSBDataType` is useless for this on macOS**: it can
+  return zero bytes in 0.1 s with the phone plainly attached, which reads as
+  "no USB device" and is indistinguishable from a dead phone. Use
+  `ioreg -p IOUSB -w0` instead — the gadget shows as
+  `OnePlus 6T (Arch Linux ARM)`, vendor `OnePlus`, `idVendor 7531`. Two wrong
+  conclusions in one session came from trusting the former.
+- **The host end of the USB net does not always get a lease.** The phone is
+  static `172.16.42.1` with `DHCPServer=yes` (`rootfs/10-usb0.network`), so
+  when `en16` sits on a self-assigned `169.254.x` address the phone's
+  `systemd-networkd` has not configured `usb0` yet. The link being `active`
+  proves nothing about it. Fix from the host without waiting:
+  `sudo ifconfig en16 inet 172.16.42.9 netmask 255.255.255.0 alias`.
 - The OnePlus bootloader appends `root=/dev/dm-0 dm=...` after our cmdline.
   `PARTLABEL=userdata` and `/dev/sda17` both time out unless the initramfs
   hook `fajitaroot` forces the root device. maggu2810 hit this too.
