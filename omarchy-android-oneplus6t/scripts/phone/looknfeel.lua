@@ -18,3 +18,7 @@ hl.config({ ecosystem = { no_donation_nag = true } })
 -- on, Hyprland wakes it on any key or touch, which reopens the menu on every
 -- wake and lights the screen in a pocket.
 hl.config({ misc = { key_press_enables_dpms = false, mouse_move_enables_dpms = false } })
+
+-- No pointer on a touchscreen: hide it after a moment of no mouse movement and
+-- on every touch. Hyprland otherwise draws one in the middle of the screen at login.
+hl.config({ cursor = { inactive_timeout = 1, hide_on_touch = true, hide_on_key_press = true } })

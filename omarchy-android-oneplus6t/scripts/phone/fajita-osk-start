@@ -34,6 +34,7 @@ sleep 1
 # Park (don't close) the primer: Hyprland's relay stops routing activation once
 # no text-input client exists at all, so the primer must stay alive for the
 # session. On a special workspace it is invisible and costs one idle terminal.
-( sleep 4; "$HOME/.local/bin/fajita-osk-primer" park ) >/dev/null 2>&1 &
+# Parking leaves squeekboard showing with nothing focused, so hide it once parked.
+( sleep 4; "$HOME/.local/bin/fajita-osk-primer" park; sleep 1; "$HOME/.local/bin/fajita-osk-toggle" hide ) >/dev/null 2>&1 &
 
 exec squeekboard
