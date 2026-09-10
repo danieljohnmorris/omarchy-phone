@@ -117,6 +117,16 @@ what doesn't is at the bottom.
   `omarchy-menu.jsonc` adds `system.theme` with Omarchy's own `style.theme`
   action. The `system.` prefix is what puts a row in that group: the merge
   infers `parent` from the id.
+- **An empty workspace is indistinguishable from a dead phone.** A tiling
+  compositor draws nothing when no window is open, and the laptop answer
+  (SUPER+RETURN) needs a keyboard. `empty-hint.qml`, run by
+  `empty-hint.service` as its own Quickshell process, draws the empty state
+  and a "launch something" button that summons Omarchy's touch-driven apps
+  menu. It is standalone rather than a plugin under `/usr/share/omarchy`, so a
+  pacman upgrade cannot overwrite it and `apply-shell-patches.sh` need not
+  know about it. It sits on `WlrLayer.Bottom` so a real window always paints
+  over it, and its `mask` is the button alone, so it cannot eat a tap the way
+  the keyboard panel's full-screen dismissal region did.
 - **Suspend never resumes, so Menu > Suspend is "Screen off".** The
   `system.suspend` menu row is overridden to `fajita-screen-off` (DPMS off),
   and `bindings.lua` rebinds the power key to `fajita-power-key`: wake if the
