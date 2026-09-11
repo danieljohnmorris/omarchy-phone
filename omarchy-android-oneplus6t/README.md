@@ -171,6 +171,38 @@ what doesn't is at the bottom.
   `systemd-networkd` has not configured `usb0` yet. The link being `active`
   proves nothing about it. Fix from the host without waiting:
   `sudo ifconfig en16 inet 172.16.42.9 netmask 255.255.255.0 alias`.
+- **ssh over IPv6 link-local needs no address, no lease and no sudo.** When the
+  host end has no `172.16.42.x` (see above) the gadget is still a working
+  ethernet link, so the phone is reachable at its link-local address with
+  nothing configured:
+
+  ```
+  ping6 -c3 ff02::1%en16                     # phone answers alongside the host
+  ssh dan@fe80::7059:80ff:fe3f:2cc9%en16     # the non-permanent one in `ndp -an`
+  ```
+
+  `ndp -an` labels the host's own address `permanent`; the other entry is the
+  phone. This unblocked an entire session that had otherwise stalled on a macOS
+  sudo password. The suffix is derived from the gadget MAC, so it is stable
+  until `usb-gadget.sh` regenerates one, and it changes nothing on the phone.
+  Link-local addresses do drop on every gadget re-enumeration: a command that
+  returns "No route to host" or exits 255 with no output usually needs nothing
+  but a retry after re-reading `ndp -an`.
+- **`scp` does not work: the phone runs no sftp subsystem.** It fails with
+  `scp: Connection closed`, which reads like a network fault. Pipe through ssh
+  instead — `ssh $PH 'cat > dest' < src` — and `ssh $PH 'sudo install -m755
+  /tmp/f /usr/local/bin/f'` for root-owned targets. `phone-setup.sh` still uses
+  `scp` where it works; prefer the pipe for anything new.
+- **The phone's user is uid 1001, not 1000.** `hyprctl` against
+  `/run/user/1000` returns empty lists rather than an error, so it looks like
+  the compositor has zero keyboards and zero binds. That fabricated the original
+  evidence for OPH-17 (`pm8941_pwrkey` *is* attached and `XF86PowerOff` *is*
+  bound). Always `export XDG_RUNTIME_DIR=/run/user/1001` and take
+  `HYPRLAND_INSTANCE_SIGNATURE` from `hyprctl instances`.
+- **`pkill -f <pattern>` over ssh matches the ssh command line itself.** The
+  remote shell carries the pattern in its own argv, so it kills the session:
+  exit 255, no output, nothing cleaned up. Break the literal, e.g.
+  `pkill -f '[o]marchy-menu-select'`.
 - The OnePlus bootloader appends `root=/dev/dm-0 dm=...` after our cmdline.
   `PARTLABEL=userdata` and `/dev/sda17` both time out unless the initramfs
   hook `fajitaroot` forces the root device. maggu2810 hit this too.
@@ -229,6 +261,12 @@ the variables in your shell. Defaults: user `dan`, phone at `172.16.42.1`.
 
 - `ssh $PHONE_USER@$PHONE_IP` over the USB NCM gadget (sudo NOPASSWD; install your
   key on first login, the password only ever crosses the USB link).
+- If that IP does not answer, the host never got a lease. Fall back to
+  `ssh $PHONE_USER@fe80::...%en16` using the non-`permanent` address from
+  `ndp -an` — no address assignment and no sudo on the host. See the notes
+  above.
+- Copy files with `ssh $PH 'cat > dest' < src`, not `scp`: the phone runs no
+  sftp subsystem.
 - Phone internet: on the host run `ssh -N -R 1080 $PHONE_USER@$PHONE_IP`; the phone's
   `/etc/profile.d/proxy.sh` points pacman/curl/git at `socks5h://127.0.0.1:1080`.
   The phone has no route of its own until you join Wi-Fi.
