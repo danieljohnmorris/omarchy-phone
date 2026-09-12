@@ -19,5 +19,36 @@ for _ in $(seq 1 60); do
 done
 sleep 1
 # waybar 0.15+ no longer picks up ~/.config/waybar/style.css by default, which
-# unthemed the row after a pacman upgrade. Pass both paths explicitly.
-exec waybar -c "$HOME/.config/waybar/config.jsonc" -s "$HOME/.config/waybar/style.css"
+# unthemed the row after a pacman upgrade — pass explicit paths. And the
+# stylesheet is generated from the active Omarchy theme at start, so the row
+# follows theme switches (the theme ships no waybar css to import).
+CSS=$HOME/.cache/fajita-waybar.css
+python3 - "$HOME/.local/state/omarchy/current/theme/colors.toml" > "$CSS" <<'PY'
+import sys
+c = {}
+for line in open(sys.argv[1]):
+    if "=" in line:
+        k, v = line.split("=", 1)
+        c[k.strip()] = v.strip().strip('"')
+print(f'''* {{
+  font-family: "JetBrainsMono Nerd Font", monospace;
+  font-size: 15px;
+  min-height: 0;
+}}
+window#waybar {{
+  background: {c.get("background", "#16161e")};
+  color: {c.get("foreground", "#a9b1d6")};
+  border-bottom: 1px solid {c.get("lighter_background", "#292e42")};
+}}
+#clock {{
+  color: {c.get("bright_foreground", "#c0caf5")};
+  font-size: 18px;
+  font-weight: 600;
+  padding: 0 12px;
+}}
+#battery {{ color: {c.get("green", "#9ece6a")}; padding: 0 12px; }}
+#battery.warning {{ color: {c.get("yellow", "#e0af68")}; }}
+#battery.critical {{ color: {c.get("red", "#f7768e")}; }}
+#custom-date {{ color: {c.get("accent", "#7aa2f7")}; padding: 0 12px; }}''')
+PY
+exec waybar -c "$HOME/.config/waybar/config.jsonc" -s "$CSS"

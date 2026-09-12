@@ -28,16 +28,14 @@ hl.config({ misc = { key_press_enables_dpms = false, mouse_move_enables_dpms = f
 -- on every touch. Hyprland otherwise draws one in the middle of the screen at login.
 hl.config({ cursor = { inactive_timeout = 1, hide_on_touch = true, hide_on_key_press = true } })
 
--- Concept shell look: tight gaps, thin borders, blue focus accent. Gaps stay
--- small on the 540x1170 panel so tiles keep usable width; borders make the
--- focused window obvious with no mouse pointer.
+-- Concept shell look: tight gaps, thin borders. Border *colours* are the
+-- theme's job (its hyprland.lua loads before this) — hardcoding them here
+-- froze the focus accent to Tokyo Night across theme switches.
 hl.config({
   general = {
     gaps_in = 4,
     gaps_out = 6,
     border_size = 2,
-    ["col.active_border"] = "rgba(7aa2f7ff)",
-    ["col.inactive_border"] = "rgba(41486855)",
   },
   decoration = { rounding = 6 },
 })
