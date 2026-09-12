@@ -20,9 +20,10 @@ pacman -Syu --noconfirm --needed \
   mkinitcpio kmod zstd util-linux linux-firmware-qcom \
   seatd polkit git vim htop 2>&1 | tail -3
 
-# optional: install one by one so a missing package doesn't kill the build
+# optional: install one by one so a missing package doesn't kill the build.
+# qrtr/rmtfs/pd-mapper/tqftpserv are NOT in the ALARM repos — build-qcom-services.sh
+# builds them from source; only modemmanager comes from pacman for the modem stack.
 OPTIONAL="modemmanager bluez bluez-utils pipewire pipewire-pulse wireplumber alsa-ucm-conf alsa-utils
-  qrtr rmtfs pd-mapper tqftpserv
   hyprland foot waybar wofi swaybg xdg-desktop-portal-hyprland hyprpaper
   squeekboard mesa vulkan-freedreno
   base-devel fastfetch chromium
@@ -45,7 +46,8 @@ userdel -r alarm 2>/dev/null || true
 sed -i 's/^#\?PasswordAuthentication .*/PasswordAuthentication yes/; s/^#\?PermitRootLogin .*/PermitRootLogin yes/' /etc/ssh/sshd_config
 
 # services
-for s in sshd NetworkManager seatd usb-gadget systemd-networkd ModemManager bluetooth qrtr-ns rmtfs pd-mapper tqftpserv; do
+# qrtr-ns deliberately NOT enabled: kernel 6.x ships an in-kernel QRTR name server.
+for s in sshd NetworkManager seatd usb-gadget systemd-networkd ModemManager bluetooth modem-uim-selection rmtfs pd-mapper tqftpserv; do
   systemctl enable "$s" >/dev/null 2>&1 || echo "no unit: $s"
 done
 
