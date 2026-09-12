@@ -66,6 +66,8 @@ ssh $PH 'cp -rn /etc/skel/. ~/; cp /etc/skel/.bashrc ~/.bashrc
 echo "== keyboard toggle bar widget (squeekboard auto-show is unreliable on Hyprland)"
 ssh $PH 'mkdir -p ~/.config/omarchy/plugins/fajita.keyboard ~/.local/bin'
 scp -q "$HERE/phone/plugins/fajita.keyboard/manifest.json" "$HERE/phone/plugins/fajita.keyboard/BarWidget.qml" $PH:~/.config/omarchy/plugins/fajita.keyboard/
+ssh $PH 'mkdir -p ~/.config/omarchy/plugins/fajita.close'
+scp -q "$HERE/phone/plugins/fajita.close/manifest.json" "$HERE/phone/plugins/fajita.close/BarWidget.qml" $PH:~/.config/omarchy/plugins/fajita.close/
 scp -q "$HERE/phone/fajita-osk-toggle" "$HERE/phone/fajita-osk-start" "$HERE/phone/fajita-osk-fit" "$HERE/phone/fajita-slot-ok" "$HERE/phone/fajita-screen-off" "$HERE/phone/fajita-power-key" $PH:~/.local/bin/
 # gum is a shim, not a fajita-* script, and it goes to /usr/local/bin because
 # ~/.local/bin sits AFTER /usr/bin in the phone's PATH (a shim there is dead

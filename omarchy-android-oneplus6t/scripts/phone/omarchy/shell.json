@@ -24,6 +24,9 @@
       "center": [],
       "right": [
         {
+          "id": "fajita.close"
+        },
+        {
           "id": "fajita.keyboard"
         },
         {

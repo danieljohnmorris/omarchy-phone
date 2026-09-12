@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "fajita.close",
+  "name": "Close app",
+  "version": "1.0.0",
+  "author": "Dan",
+  "description": "Tap to close the focused window",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Close app",
+    "description": "Close the focused window",
+    "category": "System",
+    "allowMultiple": false
+  }
+}
