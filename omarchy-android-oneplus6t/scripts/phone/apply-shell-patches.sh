@@ -94,6 +94,35 @@ assert old in s, "image picker anchor not found; upstream ImagePicker.qml change
 open(p,"w").write(s.replace(old,new,1)); print("patched image picker")
 PY3
 
+# 4) Workspaces: numeric labels become dots — filled for focused, small dot for
+# occupied, hollow for empty — like the concept shell. Narrower buttons so the
+# bar keeps room for the centre clock on a 540px panel.
+W=/usr/share/omarchy/shell/plugins/bar/widgets/Workspaces.qml
+sudo cp -n "$W" "$W.orig" 2>/dev/null || true
+sudo python3 - "$W" <<'PY4'
+import sys
+p=sys.argv[1]; s=open(p).read()
+if "fajitaDots" in s:
+    print("workspaces already patched"); sys.exit(0)
+old="""        text: focused ? "\\uDB85\\uDCFB" : (modelData === 10 ? "0" : String(modelData))
+        opacity: occupied || focused ? 1 : 0.5
+        horizontalMargin: 6
+        verticalPadding: 6
+        fixedWidth: root.vertical ? root.barSize : Style.space(20)"""
+new="""        // Phone port: dots instead of digits (concept shell). Filled = focused,
+        // small dot = has windows, hollow = empty. Narrower hit targets fit the
+        // 540px bar with a centre clock.
+        text: focused ? "\\u25CF" : (occupied ? "\\u2022" : "\\u25CB")
+        opacity: occupied || focused ? 1 : 0.5
+        horizontalMargin: 6
+        verticalPadding: 6
+        readonly property bool fajitaDots: true
+        fixedWidth: root.vertical ? root.barSize : Style.space(14)"""
+assert old in s, "workspaces anchor not found; upstream Workspaces.qml changed"
+open(p,"w").write(s.replace(old,new,1)); print("patched workspaces")
+PY4
+
+
 omarchy-restart-shell >/dev/null 2>&1 || true
 # the shell remaps its bar; restart the clock row so it lands beneath it again
 sleep 6; systemctl --user restart waybar.service 2>/dev/null || true
