@@ -46,8 +46,6 @@ phone/omarchy-menu.jsonc:.config/omarchy/extensions/omarchy-menu.jsonc
 phone/chromium-flags.conf:.config/chromium-flags.conf
 phone/empty-hint.service:.config/systemd/user/empty-hint.service
 phone/empty-hint.qml:.config/fajita/empty-hint.qml
-phone/launcher.service:.config/systemd/user/launcher.service
-phone/launcher.qml:.config/fajita/launcher.qml
 phone/notif.qml:.config/fajita/notif.qml
 phone/quicksettings.qml:.config/fajita/quicksettings.qml
 phone/lock.qml:.config/fajita/lock.qml

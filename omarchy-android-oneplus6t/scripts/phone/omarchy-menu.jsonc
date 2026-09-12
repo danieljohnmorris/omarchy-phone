@@ -18,6 +18,14 @@
     "description": "Lock screen, swipe up to unlock",
     "action": "fajita-lock-screen"
   },
+
+  "system.flipsplit": {
+    "icon": "⇄",
+    "label": "Flip split",
+    "description": "Swap the two tiled halves",
+    "when": "true",
+    "action": "hyprctl dispatch 'hl.dsp.layout(\"swapsplit\")'"
+  },
   // Shutdown is hidden: a clean poweroff cannot be undone from the phone.
   // The power button will not cold-start it afterwards (OPH-16), so the row
   // was a one-way door with no on-device recovery. `when` is a shell test and

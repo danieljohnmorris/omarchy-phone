@@ -49,10 +49,10 @@ ShellRoot {
   readonly property bool isEmpty: wsId > 0 && wsWindows === 0
 
   function launch() {
-    // Pair with the bottom launcher bar: focus its input (the OSK rises over
-    // it). If the launcher is not running, fall back to the app grid.
-    Quickshell.execDetached(["bash", "-lc",
-      "quickshell -p ~/.config/fajita/launcher.qml ipc call fajita-launcher focus 2>/dev/null || wofi --show drun"])
+    // Straight to the app grid: wofi is the proven launcher, and the OSK
+    // types into it via the text-input protocol. (A custom bottom input bar
+    // lived here once — removed: the focus/OSK/primer dance was too fragile.)
+    Quickshell.execDetached(["wofi", "--show", "drun"])
   }
 
   // Hyprland's own events are the trigger; polling would either lag the tap
