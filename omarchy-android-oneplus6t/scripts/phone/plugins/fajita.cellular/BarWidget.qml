@@ -121,6 +121,7 @@ BarWidget {
     BarIconButton {
       id: button
       bar: root.bar
+      slotSize: Style.bar.statusSlot
       text: root.barsGlyph(root.quality, root.usable)
       tooltipText: "Cellular: " + (root.modemState || "no modem")
                    + (root.rat !== "" ? " " + root.rat : "")
