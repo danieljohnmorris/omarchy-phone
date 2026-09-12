@@ -8,6 +8,7 @@ StartLimitBurst=3
 
 [Service]
 Type=simple
+Environment=OMARCHY_PATH=/usr/share/omarchy
 ExecStart=/usr/bin/quickshell -p %h/.config/fajita/empty-hint.qml
 Restart=on-failure
 RestartSec=10
