@@ -25,6 +25,25 @@ ShellRoot {
   property bool open: true
   property var entries: [] // latest notifications, newest first
   property string clockText: ""
+  property color cText: "#ffffff" // over a dimmed wallpaper; foreground keeps contrast
+  property color cTile: "#33ffffff"
+
+  // Follow the active Omarchy theme (same pattern as empty-hint/notif).
+  FileView {
+    id: colors
+    path: root.home + "/.local/state/omarchy/current/theme/colors.toml"
+    watchChanges: true
+    onFileChanged: reload()
+    onLoaded: {
+      var text = colors.text()
+      function pick(key, fallback) {
+        var m = new RegExp("^\\s*" + key + "\\s*=\\s*\"([^\"]+)\"", "m").exec(text)
+        return m ? m[1] : fallback
+      }
+      root.cText = pick("bright_foreground", "#ffffff")
+      root.cTile = pick("lighter_background", "#24283b") + "cc"
+    }
+  }
   property string dateText: ""
 
   IpcHandler {
@@ -110,7 +129,7 @@ ShellRoot {
         Text {
           anchors.horizontalCenter: parent.horizontalCenter
           text: "OMARCHY"
-          color: "#ffffff"
+          color: root.cText
           opacity: 0.55
           font.family: "JetBrainsMono Nerd Font"
           font.pixelSize: 17
@@ -120,7 +139,7 @@ ShellRoot {
         Text {
           anchors.horizontalCenter: parent.horizontalCenter
           text: root.clockText
-          color: "#ffffff"
+          color: root.cText
           font.family: "JetBrainsMono Nerd Font"
           font.pixelSize: 88
           font.weight: Font.Light
@@ -129,7 +148,7 @@ ShellRoot {
         Text {
           anchors.horizontalCenter: parent.horizontalCenter
           text: root.dateText
-          color: "#ffffff"
+          color: root.cText
           opacity: 0.7
           font.family: "JetBrainsMono Nerd Font"
           font.pixelSize: 19
@@ -149,7 +168,7 @@ ShellRoot {
             width: 470
             height: 46
             radius: 10
-            color: "#20ffffff"
+            color: root.cTile
 
             Text {
               anchors.verticalCenter: parent.verticalCenter
@@ -158,7 +177,7 @@ ShellRoot {
               anchors.right: parent.right
               anchors.rightMargin: 14
               text: modelData
-              color: "#ffffff"
+              color: root.cText
               opacity: 0.9
               font.family: "JetBrainsMono Nerd Font"
               font.pixelSize: 14
@@ -173,7 +192,7 @@ ShellRoot {
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 64
         text: "swipe up to unlock"
-        color: "#ffffff"
+        color: root.cText
         opacity: 0.45 + shade.dragOffset / 400
         font.family: "JetBrainsMono Nerd Font"
         font.pixelSize: 15
