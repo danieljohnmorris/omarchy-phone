@@ -154,6 +154,23 @@ assert old in s, "power anchor not found; upstream power Panel.qml changed"
 open(p,"w").write(s.replace(old,new,1)); print("patched power")
 PY6
 
+# 7) Idle lock: the session lock is a pocket brick on touch (no keyboard can
+# render above ext-session-lock), so the idle timer and menu Lock row both get
+# the concept lock screen instead (fajita-lock-screen → lock.qml, swipe to
+# unlock).
+D=/usr/share/omarchy/shell/plugins/services/idle/Service.qml
+sudo cp -n "$D" "$D.orig" 2>/dev/null || true
+sudo python3 - "$D" <<'PY7'
+import sys
+p=sys.argv[1]; s=open(p).read()
+if "fajita-lock-screen" in s:
+    print("idle lock already patched"); sys.exit(0)
+old='''runProcess(lockProcess, "lock", "omarchy-system-lock")'''
+new='''runProcess(lockProcess, "lock", "fajita-lock-screen")'''
+assert old in s, "idle anchor not found; upstream idle Service.qml changed"
+open(p,"w").write(s.replace(old,new,1)); print("patched idle lock")
+PY7
+
 
 
 omarchy-restart-shell >/dev/null 2>&1 || true

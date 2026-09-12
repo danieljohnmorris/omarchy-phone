@@ -50,6 +50,8 @@ phone/launcher.service:.config/systemd/user/launcher.service
 phone/launcher.qml:.config/fajita/launcher.qml
 phone/notif.qml:.config/fajita/notif.qml
 phone/quicksettings.qml:.config/fajita/quicksettings.qml
+phone/lock.qml:.config/fajita/lock.qml
+phone/fajita-lock-screen:.local/bin/fajita-lock-screen
 omarchy-packages.txt:.local/share/fajita/omarchy-packages.txt
 repack-noarch.sh:.local/bin/repack-noarch.sh
 "

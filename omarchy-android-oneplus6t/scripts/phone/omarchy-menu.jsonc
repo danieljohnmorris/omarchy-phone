@@ -9,6 +9,15 @@
     "when": "true",
     "action": "fajita-screen-off"
   },
+  // Lock: the concept-shell lock screen (swipe up to unlock), not the session
+  // lock — no keyboard can render above ext-session-lock, so the password
+  // flow is unusable on touch. See README "Lock screen".
+  "system.lock": {
+    "icon": "󰌾",
+    "label": "Lock",
+    "description": "Lock screen, swipe up to unlock",
+    "action": "fajita-lock-screen"
+  },
   // Shutdown is hidden: a clean poweroff cannot be undone from the phone.
   // The power button will not cold-start it afterwards (OPH-16), so the row
   // was a one-way door with no on-device recovery. `when` is a shell test and
