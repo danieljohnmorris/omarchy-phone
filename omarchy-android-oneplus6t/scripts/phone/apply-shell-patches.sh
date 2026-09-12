@@ -179,19 +179,32 @@ sudo cp -n "$M" "$M.orig" 2>/dev/null || true
 sudo python3 - "$M" <<'PY8'
 import sys
 p=sys.argv[1]; s=open(p).read()
-if "fajita-menu-tap" in s:
+if "fajita-menu-tap2" in s:
     print("menu tap already patched"); sys.exit(0)
+# v1 gated nothing: the handler ate taps on the on-screen keyboard (which
+# covers the bottom 315px) and dismissed the menu mid-typing. v2 ignores
+# anything in the OSK strip.
+s = s.replace("} // fajita-menu-tap", "}", 1)  # drop v1 handler if present
+s = s.replace("""    TapHandler {
+      gesturePolicy: TapHandler.ReleaseWithinBounds
+      onTapped: root.cancel()
+    }""", "", 1)
 old="""    MouseArea {
       anchors.fill: parent
       onClicked: root.cancel()
     }"""
 new=old+"""
 
-    // Phone port: touch taps never synthesize MouseArea clicks here.
+    // Phone port: touch taps never synthesize MouseArea clicks here. Taps in
+    // the bottom 315px are the OSK strip — never treat them as outside-taps.
     TapHandler {
+      id: fajitaTap
       gesturePolicy: TapHandler.ReleaseWithinBounds
-      onTapped: root.cancel()
-    } // fajita-menu-tap"""
+      onTapped: function(button) {
+        if (fajitaTap.point.position.y > fajitaTap.parent.height - 315) return
+        root.cancel()
+      }
+    } // fajita-menu-tap2"""
 assert old in s, "menu scrim anchor not found; upstream Menu.qml changed"
 open(p,"w").write(s.replace(old,new,1)); print("patched menu tap")
 PY8

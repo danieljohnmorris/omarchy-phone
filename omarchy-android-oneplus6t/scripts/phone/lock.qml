@@ -25,25 +25,12 @@ ShellRoot {
   property bool open: true
   property var entries: [] // latest notifications, newest first
   property string clockText: ""
-  property color cText: "#ffffff" // over a dimmed wallpaper; foreground keeps contrast
-  property color cTile: "#33ffffff"
-
-  // Follow the active Omarchy theme (same pattern as empty-hint/notif).
-  FileView {
-    id: colors
-    path: root.home + "/.local/state/omarchy/current/theme/colors.toml"
-    watchChanges: true
-    onFileChanged: reload()
-    onLoaded: {
-      var text = colors.text()
-      function pick(key, fallback) {
-        var m = new RegExp("^\\s*" + key + "\\s*=\\s*\"([^\"]+)\"", "m").exec(text)
-        return m ? m[1] : fallback
-      }
-      root.cText = pick("bright_foreground", "#ffffff")
-      root.cTile = pick("lighter_background", "#24283b") + "cc"
-    }
-  }
+  // Deliberately NOT theme-following: every text element sits on the fixed
+  // 86% black shade, so only white keeps contrast in every theme — light
+  // themes have dark foregrounds that would vanish. notif/quicksettings are
+  // the theme-following overlays; the lock is intentionally fixed.
+  property color cText: "#ffffff"
+  property color cTile: "#66ffffff"
   property string dateText: ""
 
   IpcHandler {
