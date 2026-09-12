@@ -1,0 +1,7 @@
+#!/bin/bash
+# Bar menu "Reconnect": bounce the cellular data connection.
+# NM profile first (also re-runs MM's connect path cleanly); the raw
+# simple-connect fallback covers the profile being missing.
+nmcli connection down three >/dev/null 2>&1
+nmcli connection up three >/dev/null 2>&1 \
+  || mmcli -m any --simple-connect="apn=three.co.uk,ip-type=ipv4v6" >/dev/null 2>&1

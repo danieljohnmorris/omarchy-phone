@@ -1,0 +1,26 @@
+#!/bin/bash
+# One-line cellular detail for the fajita.cellular menu:
+#   OPERATOR|RAT|SIGNAL|MODEM|DATA|IP|RX_BYTES|TX_BYTES|PING_MS
+# RX/TX are cumulative on qmapmux0.0 since connect; PING is a 1.1.1.1
+# round-trip ("-" when data is down). Empty fields render as "—" in Panel.qml.
+out=$(mmcli -m any 2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g')
+op=$(grep -oE 'operator name: .*' <<<"$out" | sed 's/operator name: *//' | head -1)
+q=$(grep -oE 'signal quality: *[0-9]+' <<<"$out" | grep -oE '[0-9]+' | head -1)
+tech=$(sed -n 's/.*access tech: *\([a-z0-9]*\).*/\1/p' <<<"$out" | head -1)
+st=$(grep -oE '^ *\| *state: *[a-z-]+' <<<"$out" | grep -oE '[a-z-]+$' | head -1)
+case "$tech" in
+  gsm)  rat=2G ;;
+  umts) rat=3G ;;
+  lte)  rat=4G ;;
+  nr5g) rat=5G ;;
+  *)    rat="" ;;
+esac
+if ip -4 addr show qmapmux0.0 2>/dev/null | grep -q inet; then
+  d=up
+  ip=$(ip -4 addr show qmapmux0.0 | grep -oE 'inet [0-9.]+' | awk '{print $2}')
+  read rx tx <<<"$(cat /sys/class/net/qmapmux0.0/statistics/rx_bytes 2>/dev/null) $(cat /sys/class/net/qmapmux0.0/statistics/tx_bytes 2>/dev/null)"
+  ping_ms=$(timeout 3 ping -c1 -W2 1.1.1.1 2>/dev/null | sed -n 's/.*time=\([0-9.]*\).*/\1/p' | head -1)
+else
+  d=down; ip=""; rx=""; tx=""; ping_ms=""
+fi
+echo "${op:-}|$rat|${q:-0}|${st:-unknown}|$d|${ip:-}|${rx:-0}|${tx:-0}|${ping_ms:--}"

@@ -64,10 +64,10 @@ ssh $PH 'cp -rn /etc/skel/. ~/; cp /etc/skel/.bashrc ~/.bashrc
   sudo systemctl enable sshd'
 
 echo "== keyboard toggle bar widget (squeekboard auto-show is unreliable on Hyprland)"
-ssh $PH 'mkdir -p ~/.config/omarchy/plugins/fajita.keyboard ~/.local/bin'
+ssh $PH 'mkdir -p ~/.config/omarchy/plugins/fajita.keyboard ~/.config/omarchy/plugins/fajita.cellular ~/.local/bin'
 scp -q "$HERE/phone/plugins/fajita.keyboard/manifest.json" "$HERE/phone/plugins/fajita.keyboard/BarWidget.qml" $PH:~/.config/omarchy/plugins/fajita.keyboard/
-scp -q "$HERE/phone/plugins/fajita.cellular/manifest.json" "$HERE/phone/plugins/fajita.cellular/BarWidget.qml" $PH:~/.config/omarchy/plugins/fajita.cellular/
-scp -q "$HERE/phone/fajita-osk-toggle" "$HERE/phone/fajita-osk-start" "$HERE/phone/fajita-osk-fit" "$HERE/phone/fajita-slot-ok" "$HERE/phone/fajita-screen-off" "$HERE/phone/fajita-power-key" "$HERE/phone/fajita-cell-status" "$HERE/phone/fajita-cell-toggle" $PH:~/.local/bin/
+scp -q "$HERE/phone/plugins/fajita.cellular/manifest.json" "$HERE/phone/plugins/fajita.cellular/BarWidget.qml" "$HERE/phone/plugins/fajita.cellular/Panel.qml" $PH:~/.config/omarchy/plugins/fajita.cellular/
+scp -q "$HERE/phone/fajita-osk-toggle" "$HERE/phone/fajita-osk-start" "$HERE/phone/fajita-osk-fit" "$HERE/phone/fajita-slot-ok" "$HERE/phone/fajita-screen-off" "$HERE/phone/fajita-power-key" "$HERE/phone/fajita-cell-status" "$HERE/phone/fajita-cell-toggle" "$HERE/phone/fajita-cell-info" "$HERE/phone/fajita-cell-reconnect" $PH:~/.local/bin/
 # gum is a shim, not a fajita-* script, and it goes to /usr/local/bin because
 # ~/.local/bin sits AFTER /usr/bin in the phone's PATH (a shim there is dead
 # code). It routes confirm and single-select choose to the touch-driven
@@ -91,7 +91,7 @@ scp -q "$HERE/phone/squeekboard.service" "$HERE/phone/osk-fit.service" "$HERE/ph
 # upgrade cannot overwrite it and apply-shell-patches.sh need not know about it.
 ssh $PH 'mkdir -p ~/.config/fajita'
 scp -q "$HERE/phone/empty-hint.qml" $PH:.config/fajita/empty-hint.qml
-ssh $PH 'chmod +x ~/.local/bin/fajita-osk-toggle ~/.local/bin/fajita-osk-start ~/.local/bin/fajita-osk-fit ~/.local/bin/fajita-slot-ok ~/.local/bin/fajita-screen-off ~/.local/bin/fajita-power-key ~/.local/bin/fajita-cell-status ~/.local/bin/fajita-cell-toggle
+ssh $PH 'chmod +x ~/.local/bin/fajita-osk-toggle ~/.local/bin/fajita-osk-start ~/.local/bin/fajita-osk-fit ~/.local/bin/fajita-slot-ok ~/.local/bin/fajita-screen-off ~/.local/bin/fajita-power-key ~/.local/bin/fajita-cell-status ~/.local/bin/fajita-cell-toggle ~/.local/bin/fajita-cell-info ~/.local/bin/fajita-cell-reconnect
   # squeekboard must bind while a focused text client exists (Hyprland 0.56 IME relay quirk); the
   # service primes that with a throwaway terminal. Do NOT start it from Hyprland exec/autostart.lua.
   # osk-fit unfloats floating windows while the keyboard is up so they are not covered by it.

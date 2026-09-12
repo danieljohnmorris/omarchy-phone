@@ -4,7 +4,7 @@
 # MODEM: registered/searching/failed/..., DATA: up|down.
 out=$(mmcli -m any 2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g')
 if [ -z "$out" ]; then
-  echo "0||down"
+  echo "0||unknown|down"
   exit 0
 fi
 q=$(grep -oE 'signal quality: *[0-9]+' <<<"$out" | grep -oE '[0-9]+' | head -1)
