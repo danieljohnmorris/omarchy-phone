@@ -44,6 +44,8 @@ phone/omarchy-update.service:.config/systemd/user/omarchy-update.service
 phone/omarchy-update.timer:.config/systemd/user/omarchy-update.timer
 phone/omarchy-menu.jsonc:.config/omarchy/extensions/omarchy-menu.jsonc
 phone/chromium-flags.conf:.config/chromium-flags.conf
+phone/chromium-ua-mobile/manifest.json:.config/chromium/extensions/ua-mobile/manifest.json
+phone/chromium-ua-mobile/ua.js:.config/chromium/extensions/ua-mobile/ua.js
 phone/empty-hint.service:.config/systemd/user/empty-hint.service
 phone/empty-hint.qml:.config/fajita/empty-hint.qml
 phone/notif.qml:.config/fajita/notif.qml
