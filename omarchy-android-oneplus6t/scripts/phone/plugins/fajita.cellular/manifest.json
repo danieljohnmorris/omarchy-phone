@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "fajita.cellular",
+  "name": "Cellular",
+  "version": "1.0.0",
+  "author": "Dan",
+  "description": "Mobile signal bars + RAT (3G/4G/5G); tap to toggle data",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Cellular",
+    "description": "Signal strength, network type and data toggle",
+    "category": "Network",
+    "allowMultiple": false
+  }
+}

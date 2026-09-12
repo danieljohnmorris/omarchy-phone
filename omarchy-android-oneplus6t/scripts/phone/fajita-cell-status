@@ -1,0 +1,21 @@
+#!/bin/bash
+# One-line modem status for the fajita.cellular bar widget: QUALITY|RAT|MODEM|DATA
+# QUALITY: signal percentage (0-100), RAT: 2G/3G/4G/5G or empty,
+# MODEM: registered/searching/failed/..., DATA: up|down.
+out=$(mmcli -m any 2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g')
+if [ -z "$out" ]; then
+  echo "0||down"
+  exit 0
+fi
+q=$(grep -oE 'signal quality: *[0-9]+' <<<"$out" | grep -oE '[0-9]+' | head -1)
+tech=$(sed -n 's/.*access tech: *\([a-z0-9]*\).*/\1/p' <<<"$out" | head -1)
+st=$(grep -oE '^ *\| *state: *[a-z-]+' <<<"$out" | grep -oE '[a-z-]+$' | head -1)
+case "$tech" in
+  gsm)   rat=2G ;;
+  umts)  rat=3G ;;
+  lte)   rat=4G ;;
+  nr5g)  rat=5G ;;
+  *)     rat="" ;;
+esac
+if ip -4 addr show qmapmux0.0 2>/dev/null | grep -q inet; then d=up; else d=down; fi
+echo "${q:-0}|$rat|${st:-unknown}|$d"

@@ -1,0 +1,9 @@
+#!/bin/bash
+# Tap action for the cellular bar widget: toggle the data connection.
+if ip -4 addr show qmapmux0.0 2>/dev/null | grep -q inet; then
+  nmcli connection down three >/dev/null 2>&1 \
+    || sudo mmcli -m any 2>/dev/null | grep -oE '/org/freedesktop/ModemManager1/Bearer/[0-9]+' | \
+       xargs -r -n1 sudo mmcli -m any --delete-bearer >/dev/null 2>&1
+else
+  nmcli connection up three
+fi
