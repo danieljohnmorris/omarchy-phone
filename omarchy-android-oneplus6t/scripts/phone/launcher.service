@@ -9,6 +9,7 @@ StartLimitBurst=3
 [Service]
 Type=simple
 ExecStart=/usr/bin/quickshell -p %h/.config/fajita/launcher.qml
+Environment=QT_IM_MODULE=wayland
 Restart=on-failure
 RestartSec=10
 Slice=app-graphical.slice

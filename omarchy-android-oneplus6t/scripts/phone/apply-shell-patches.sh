@@ -175,5 +175,8 @@ PY7
 
 omarchy-restart-shell >/dev/null 2>&1 || true
 # the shell remaps its bar; restart the clock row so it lands beneath it again
-sleep 6; systemctl --user restart waybar.service 2>/dev/null || true
+systemctl --user reset-failed waybar.service 2>/dev/null || true
+# waybar has StartLimitIntervalSec=300/Burst=3: repeated restarts (e.g. several
+# patcher runs in a row) trip the limit and the clock row silently stays dead.
+systemctl --user is-active --quiet waybar.service && systemctl --user restart waybar.service || true
 echo "shell restarted"

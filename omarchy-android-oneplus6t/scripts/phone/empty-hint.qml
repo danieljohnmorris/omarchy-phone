@@ -50,9 +50,9 @@ ShellRoot {
 
   function launch() {
     // Pair with the bottom launcher bar: focus its input (the OSK rises over
-    // it). If the launcher is not running, fall back to the apps menu.
+    // it). If the launcher is not running, fall back to the app grid.
     Quickshell.execDetached(["bash", "-lc",
-      "quickshell -p ~/.config/fajita/launcher.qml ipc call fajita-launcher focus 2>/dev/null || omarchy-menu summon apps"])
+      "quickshell -p ~/.config/fajita/launcher.qml ipc call fajita-launcher focus 2>/dev/null || wofi --show drun"])
   }
 
   // Hyprland's own events are the trigger; polling would either lag the tap
@@ -108,24 +108,6 @@ ShellRoot {
       anchors.centerIn: parent
       spacing: 22
 
-      // The dwindle split, drawn rather than iconified: two tiles, the second
-      // offset along the long edge, which is what a tap-launch does next.
-      Item {
-        width: 26
-        height: 54
-        anchors.horizontalCenter: parent.horizontalCenter
-
-        Rectangle {
-          width: 11; height: 26
-          x: 0; y: 0
-          color: root.cBorder
-        }
-        Rectangle {
-          width: 11; height: 26
-          x: 13; y: 26
-          color: root.cBorder
-        }
-      }
 
       Text {
         anchors.horizontalCenter: parent.horizontalCenter

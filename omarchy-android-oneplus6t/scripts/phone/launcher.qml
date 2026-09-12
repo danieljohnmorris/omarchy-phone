@@ -36,6 +36,7 @@ ShellRoot {
 
   readonly property int barHeight: 64
   readonly property int glyphSize: 26
+  readonly property int oskHeight: 315 // squeekboard strip: `hyprctl monitors` reserved [0,77,0,315]
 
   FileView {
     id: colors
@@ -60,8 +61,7 @@ ShellRoot {
   IpcHandler {
     target: "fajita-launcher"
     function focus() {
-      win.focusable = true
-      input.forceActiveFocus()
+      input.forceActiveFocus() // OnDemand interactivity: compositor hands over the keyboard, squeekboard rises
     }
   }
 
@@ -76,8 +76,11 @@ ShellRoot {
 
     anchors { bottom: true; left: true; right: true }
     aboveWindows: true // WlrLayer.Top
+    WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand
     implicitHeight: root.barHeight
     exclusiveZone: root.barHeight // reserve layout space so tiles never sit under us
+    margins.bottom: input.activeFocus ? root.oskHeight : 0 // ride up the OSK strip while typing
+    Behavior on margins.bottom { NumberAnimation { duration: 120 } }
     color: "transparent"
 
     Rectangle {
@@ -159,24 +162,19 @@ ShellRoot {
               }
               Keys.onEscapePressed: function (event) {
                 input.focus = false
-                win.focusable = false
                 event.accepted = true
               }
               onAccepted: {
                 root.run(input.text)
                 input.text = ""
                 input.focus = false
-                win.focusable = false
               }
             }
           }
 
           MouseArea {
             anchors.fill: parent
-            onClicked: {
-              win.focusable = true
-              input.forceActiveFocus()
-            }
+            onClicked: input.forceActiveFocus()
           }
         }
 
@@ -193,7 +191,9 @@ ShellRoot {
           }
           MouseArea {
             anchors.fill: parent
-            onClicked: root.run("hyprctl dispatch layoutmsg swapsplit")
+            // this Hyprland builds dispatch args through a Lua eval — the bare
+            // keyword form dies with a parse error; the fluent form is the API.
+            onClicked: root.run("hyprctl dispatch 'hl.dsp.layout(\"swapsplit\")'")
           }
         }
       }
