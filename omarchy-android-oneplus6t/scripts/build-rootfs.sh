@@ -66,6 +66,7 @@ install -Dm644 $SCRIPTS/rootfs/99-fajita.conf       $MNT/etc/NetworkManager/conf
 install -Dm755 $SCRIPTS/rootfs/chroot-setup.sh      $MNT/root/chroot-setup.sh
 install -Dm755 $SCRIPTS/rootfs/modem-uim-selection.sh     $MNT/usr/local/bin/modem-uim-selection.sh
 install -Dm644 $SCRIPTS/rootfs/modem-uim-selection.service $MNT/etc/systemd/system/modem-uim-selection.service
+install -Dm600 $SCRIPTS/rootfs/mobile-data.nmconnection $MNT/etc/NetworkManager/system-connections/mobile-data.nmconnection
 rm -f $MNT/etc/resolv.conf; cp /etc/resolv.conf $MNT/etc/resolv.conf
 
 echo "== chroot setup"

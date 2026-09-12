@@ -1,0 +1,17 @@
+# Cellular data: NetworkManager activates this when ModemManager exports the
+# modem. Autoconnect=true means data comes up at boot without any manual step.
+# APN is this SIM's carrier (Three UK); change it here if the SIM changes.
+[connection]
+id=three
+type=gsm
+autoconnect=true
+
+[gsm]
+apn=three.co.uk
+ip-type=ipv4v6
+
+[ipv4]
+method=auto
+
+[ipv6]
+method=auto
