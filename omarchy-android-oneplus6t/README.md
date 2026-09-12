@@ -299,6 +299,39 @@ Other phone-specific changes, applied by `phone-setup.sh`:
   it to `tte` from `python-terminaltexteffects` with the frame rate clamped, and
   the screensaver ships disabled: the Python engine at 120fps wedges the phone.
 
+### Cellular bring-up
+
+Modem userspace is a stack of source builds, not pacman packages: `qrtr`,
+`rmtfs`, `pd-mapper` and `tqftpserv` are not in the ALARM repos
+(`build-qcom-services.sh` pins the validated qrtr/rmtfs commits), ModemManager
+is rebuilt from a pinned git commit with a crash fix
+(`build-modemmanager.sh` — see below), and `modem-uim-selection.service`
+provisions the SIM's UIM session at every boot.
+
+Three device-specific traps, all found the hard way on 2026-09-12:
+
+- **ModemManager's netlink layer has a use-after-free** (`transaction_complete`
+  removes the transaction from the hash table — running its value-destroy —
+  before calling `tr->completion_fn`). Every muxed (qmapmux) data connection
+  made MM segfault; it then crash-looped under NM autoconnect. Fixed in
+  `scripts/mm-patches/`; still present upstream as of 1.25.95.
+- **rmtfs flags are not the data blocker.** The stock unit runs `-r -P -s`
+  (pmOS ships the same, `rmtfs_avoid_writing=true` in their confd). Testing
+  without `-r` changed nothing: the modem's call manager still refuses every
+  PDN with `cm error: no-service` (QMI call-end reason 3,2001) even on a clean
+  boot with the SIM session provisioned, LTE registered and PS attached. The
+  refusal is synchronous in the WDS Start Network response — an internal
+  call-manager decision, still unresolved at the time of writing.
+- **Nothing provisions the SIM's UIM "primary GW" session at boot.** Android's
+  RIL normally does it; without it ModemManager init fails with
+  "couldn't check unlock status: GW primary session index unknown" and the
+  modem lands in a failed `sim-missing` state even though the SIM is fine.
+  `modem-uim-selection.service` replays pmOS's fix (activate the USIM AID on
+  the occupied slot as primary-gw) before MM starts.
+
+DMS also parks in `shutting-down` after cold boot; the pinned MM commit handles
+that mode (upstream 31cbf9c1, found on this exact device by lynxis).
+
 ## Upgrading Omarchy
 
 `omarchy-update` cannot run here: it uses the `[omarchy]` pacman repo, which
@@ -327,10 +360,11 @@ under the notch.
 
 Working: boots unattended into the Omarchy session, bar, menu (touch), on-screen
 keyboard, terminal, theme, GPU acceleration, audio, Wi-Fi, USB networking, ssh,
-screenshots (`scripts/shot.sh`).
+screenshots, modem bring-up (SIM provisioning, LTE registration — data
+in progress at the time of writing; `scripts/shot.sh`).
 
 Not working: Bluetooth (firmware loads, HCI reset times out), lock screen and
-cellular. I haven't tried the camera or sensors.
+cellular data. I haven't tried the camera or sensors.
 
 Tested only on a OnePlus 6T (fajita) with Omarchy 4.0.2 and Hyprland 0.56.2.
 The OnePlus 6 (enchilada) shares the SoC and should need only a DTB change.
