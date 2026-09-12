@@ -1,0 +1,15 @@
+[Unit]
+Description=Qualcomm UIM primary session selection (SIM provisioning)
+# rmtfs serves the modem's EFS; pd-mapper registers remoteproc PDs.
+# ModemManager init aborts without the session this provisions.
+After=rmtfs.service pd-mapper.service
+Before=ModemManager.service
+Wants=rmtfs.service pd-mapper.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/modem-uim-selection.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -64,6 +64,8 @@ install -Dm755 $SCRIPTS/rootfs/usb-gadget.sh        $MNT/usr/local/bin/usb-gadge
 install -Dm644 $SCRIPTS/rootfs/10-usb0.network      $MNT/etc/systemd/network/10-usb0.network
 install -Dm644 $SCRIPTS/rootfs/99-fajita.conf       $MNT/etc/NetworkManager/conf.d/99-fajita.conf
 install -Dm755 $SCRIPTS/rootfs/chroot-setup.sh      $MNT/root/chroot-setup.sh
+install -Dm755 $SCRIPTS/rootfs/modem-uim-selection.sh     $MNT/usr/local/bin/modem-uim-selection.sh
+install -Dm644 $SCRIPTS/rootfs/modem-uim-selection.service $MNT/etc/systemd/system/modem-uim-selection.service
 rm -f $MNT/etc/resolv.conf; cp /etc/resolv.conf $MNT/etc/resolv.conf
 
 echo "== chroot setup"
@@ -77,6 +79,7 @@ echo "nameserver 1.1.1.1" > $MNT/etc/resolv.conf
 echo "== hyprland rebuild (ALARM binary lags aquamarine) + qcom services"
 bash $SCRIPTS/build-hyprland.sh
 bash $SCRIPTS/build-qcom-services.sh
+bash $SCRIPTS/build-modemmanager.sh
 mountpoint -q $MNT || mount -o loop $IMG $MNT
 # passwordless sudo for the phone user (no keyboard on device; everything is driven over ssh)
 echo "$USER_NAME ALL=(ALL) NOPASSWD: ALL" > $MNT/etc/sudoers.d/$USER_NAME; chmod 440 $MNT/etc/sudoers.d/$USER_NAME
