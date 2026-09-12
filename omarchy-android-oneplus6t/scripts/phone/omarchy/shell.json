@@ -27,9 +27,6 @@
       "center": [],
       "right": [
         {
-          "id": "fajita.close"
-        },
-        {
           "id": "fajita.cellular"
         },
         {
@@ -46,9 +43,6 @@
         },
         {
           "id": "omarchy.monitor"
-        },
-        {
-          "id": "omarchy.power"
         }
       ]
     }

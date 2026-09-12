@@ -9,6 +9,17 @@
     "when": "true",
     "action": "fajita-screen-off"
   },
+  // The bar used to carry a dedicated close (X) widget for this; it was
+  // dropped to declutter the icons, and the menu row is the touch close path
+  // (no titlebars, no gestures on this device). Dispatcher form is the
+  // Lua-fluent one — Hyprland evals dispatch args as Lua.
+  "system.closeapp": {
+    "icon": "󰅖",
+    "label": "Close app",
+    "description": "Close the focused window",
+    "when": "true",
+    "action": "hyprctl dispatch 'hl.dsp.window.close()'"
+  },
   // Shutdown is hidden: a clean poweroff cannot be undone from the phone.
   // The power button will not cold-start it afterwards (OPH-16), so the row
   // was a one-way door with no on-device recovery. `when` is a shell test and
