@@ -49,7 +49,10 @@ ShellRoot {
   readonly property bool isEmpty: wsId > 0 && wsWindows === 0
 
   function launch() {
-    Quickshell.execDetached(["bash", "-lc", "omarchy-menu summon apps"])
+    // Pair with the bottom launcher bar: focus its input (the OSK rises over
+    // it). If the launcher is not running, fall back to the apps menu.
+    Quickshell.execDetached(["bash", "-lc",
+      "quickshell -p ~/.config/fajita/launcher.qml ipc call fajita-launcher focus 2>/dev/null || omarchy-menu summon apps"])
   }
 
   // Hyprland's own events are the trigger; polling would either lag the tap

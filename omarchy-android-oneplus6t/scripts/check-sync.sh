@@ -46,6 +46,8 @@ phone/omarchy-menu.jsonc:.config/omarchy/extensions/omarchy-menu.jsonc
 phone/chromium-flags.conf:.config/chromium-flags.conf
 phone/empty-hint.service:.config/systemd/user/empty-hint.service
 phone/empty-hint.qml:.config/fajita/empty-hint.qml
+phone/launcher.service:.config/systemd/user/launcher.service
+phone/launcher.qml:.config/fajita/launcher.qml
 omarchy-packages.txt:.local/share/fajita/omarchy-packages.txt
 repack-noarch.sh:.local/bin/repack-noarch.sh
 "
