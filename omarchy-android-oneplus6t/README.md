@@ -216,6 +216,11 @@ what doesn't is at the bottom.
 - Key combos: fastboot = from off with cable OUT, Power+VolUp+VolDown, release
   Power at the vibrate, keep the volumes until "FastBoot Mode". Both volumes
   with the cable IN = EDL (9008). Exit EDL: unplug, VolUp+Power 20 s.
+- Hard crashes land in EDL with no trace: this kernel has no ramoops/pstore
+  backend (`/sys/fs/pstore/` empty after a reboot), so three same-day EDL drops
+  left nothing to diagnose. Root-cause capture needs a kernel with ramoops
+  reserved memory or a serial console. Suspected: load/thermal during
+  unrestricted on-device compiles — cap `-j`/CPUQuota for long builds.
 - Once Linux runs, the boot partition can be rewritten over ssh with
   `dd if=boot.img of=/dev/disk/by-partlabel/boot_b`, so the button combination
   is only needed for the first flash.
