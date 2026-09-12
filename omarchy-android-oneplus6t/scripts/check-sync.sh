@@ -56,7 +56,7 @@ same=0; diff_n=0; missing=0
 while IFS=: read -r repo remote; do
   [ -z "$repo" ] && continue
   local_f="$HERE/$repo"
-  if ! scp -q "$PH:$remote" "$tmp/f" 2>/dev/null; then
+  if ! ssh "$PH" cat "$remote" > "$tmp/f" 2>/dev/null; then
     echo "MISSING ON PHONE  $remote"; missing=$((missing+1)); continue
   fi
   if [ ! -f "$local_f" ]; then

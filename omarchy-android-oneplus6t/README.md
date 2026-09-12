@@ -188,11 +188,12 @@ what doesn't is at the bottom.
   Link-local addresses do drop on every gadget re-enumeration: a command that
   returns "No route to host" or exits 255 with no output usually needs nothing
   but a retry after re-reading `ndp -an`.
-- **`scp` does not work: the phone runs no sftp subsystem.** It fails with
-  `scp: Connection closed`, which reads like a network fault. Pipe through ssh
-  instead — `ssh $PH 'cat > dest' < src` — and `ssh $PH 'sudo install -m755
-  /tmp/f /usr/local/bin/f'` for root-owned targets. `phone-setup.sh` still uses
-  `scp` where it works; prefer the pipe for anything new.
+- **Transfer files with the ssh pipe, not `scp`.** The sftp subsystem has come
+  and gone across rootfs rebuilds — when it is missing, scp fails with
+  `scp: Connection closed`, which reads like a network fault. `ssh $PH
+  'cat > dest' < src` works with or without sftp, and over the link-local v6
+  target that scp's client-side parsing also chokes on. `ssh $PH 'sudo install
+  -m755 /tmp/f /usr/local/bin/f'` for root-owned targets.
 - **The phone's user is uid 1001, not 1000.** `hyprctl` against
   `/run/user/1000` returns empty lists rather than an error, so it looks like
   the compositor has zero keyboards and zero binds. That fabricated the original
@@ -265,8 +266,8 @@ the variables in your shell. Defaults: user `dan`, phone at `172.16.42.1`.
   `ssh $PHONE_USER@fe80::...%en16` using the non-`permanent` address from
   `ndp -an` — no address assignment and no sudo on the host. See the notes
   above.
-- Copy files with `ssh $PH 'cat > dest' < src`, not `scp`: the phone runs no
-  sftp subsystem.
+- Copy files with `ssh $PH 'cat > dest' < src`, not `scp`: the ssh pipe works
+  whether or not the phone currently ships an sftp subsystem (see the trap above).
 - Phone internet: on the host run `ssh -N -R 1080 $PHONE_USER@$PHONE_IP`; the phone's
   `/etc/profile.d/proxy.sh` points pacman/curl/git at `socks5h://127.0.0.1:1080`.
   The phone has no route of its own until you join Wi-Fi.
