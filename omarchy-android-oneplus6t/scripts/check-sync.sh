@@ -48,6 +48,7 @@ phone/empty-hint.service:.config/systemd/user/empty-hint.service
 phone/empty-hint.qml:.config/fajita/empty-hint.qml
 phone/launcher.service:.config/systemd/user/launcher.service
 phone/launcher.qml:.config/fajita/launcher.qml
+phone/notif.qml:.config/fajita/notif.qml
 omarchy-packages.txt:.local/share/fajita/omarchy-packages.txt
 repack-noarch.sh:.local/bin/repack-noarch.sh
 "

@@ -122,6 +122,22 @@ assert old in s, "workspaces anchor not found; upstream Workspaces.qml changed"
 open(p,"w").write(s.replace(old,new,1)); print("patched workspaces")
 PY4
 
+# 5) Clock: left tap opens the phone's notification center (notif.qml) instead
+# of the calendar panel. Right = cycle format and middle = timezone stay.
+C=/usr/share/omarchy/shell/plugins/panels/clock/BarWidget.qml
+sudo cp -n "$C" "$C.orig" 2>/dev/null || true
+sudo python3 - "$C" <<'PY5'
+import sys
+p=sys.argv[1]; s=open(p).read()
+if "fajita-notif" in s:
+    print("clock already patched"); sys.exit(0)
+old="""      else root.togglePanel()"""
+new="""      else Quickshell.execDetached(["bash", "-lc", "quickshell -p ~/.config/fajita/notif.qml ipc call fajita-notif toggle 2>/dev/null || quickshell -p ~/.config/fajita/notif.qml"]) // fajita-notif"""
+assert old in s, "clock anchor not found; upstream clock BarWidget.qml changed"
+open(p,"w").write(s.replace(old,new,1)); print("patched clock")
+PY5
+
+
 
 omarchy-restart-shell >/dev/null 2>&1 || true
 # the shell remaps its bar; restart the clock row so it lands beneath it again
