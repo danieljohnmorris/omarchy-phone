@@ -49,10 +49,12 @@ ShellRoot {
   readonly property bool isEmpty: wsId > 0 && wsWindows === 0
 
   function launch() {
-    // Straight to the app grid: wofi is the proven launcher, and the OSK
-    // types into it via the text-input protocol. (A custom bottom input bar
-    // lived here once — removed: the focus/OSK/primer dance was too fragile.)
-    Quickshell.execDetached(["wofi", "--show", "drun"])
+    // The Qt apps menu: touch selection works and the OSK rises for its search
+    // field. wofi does neither — it ignores pointer/touch selection entirely
+    // (verified by tap injection) and its GTK input-method path never wakes
+    // squeekboard on this build. (A custom bottom input bar lived here once —
+    // removed: the focus/OSK/primer dance was too fragile.)
+    Quickshell.execDetached(["omarchy-menu", "summon", "apps"])
   }
 
   // Hyprland's own events are the trigger; polling would either lag the tap
