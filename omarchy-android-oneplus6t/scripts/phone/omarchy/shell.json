@@ -14,6 +14,10 @@
           "id": "omarchy.menu"
         },
         {
+          "id": "omarchy.spacer",
+          "size": 6
+        },
+        {
           "id": "omarchy.workspaces"
         }
       ],
