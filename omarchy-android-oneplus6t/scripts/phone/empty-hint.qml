@@ -110,15 +110,6 @@ ShellRoot {
       anchors.centerIn: parent
       spacing: 22
 
-
-      Text {
-        anchors.horizontalCenter: parent.horizontalCenter
-        text: "workspace " + root.wsId + " is empty"
-        color: root.cText
-        font.family: "JetBrainsMono Nerd Font"
-        font.pixelSize: 17
-      }
-
       Rectangle {
         id: card
         anchors.horizontalCenter: parent.horizontalCenter
