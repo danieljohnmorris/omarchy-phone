@@ -137,6 +137,23 @@ assert old in s, "clock anchor not found; upstream clock BarWidget.qml changed"
 open(p,"w").write(s.replace(old,new,1)); print("patched clock")
 PY5
 
+# 6) Power: left tap opens the phone's quick settings (quicksettings.qml)
+# instead of the built-in battery panel. Right = percentage stays.
+PP=/usr/share/omarchy/shell/plugins/panels/power/Panel.qml
+sudo cp -n "$PP" "$PP.orig" 2>/dev/null || true
+sudo python3 - "$PP" <<'PY6'
+import sys
+p=sys.argv[1]; s=open(p).read()
+if "fajita-qs" in s:
+    print("power already patched"); sys.exit(0)
+old="""      if (b === Qt.RightButton) root.togglePercentage()
+      else root.toggle()"""
+new="""      if (b === Qt.RightButton) root.togglePercentage()
+      else Quickshell.execDetached(["bash", "-lc", "quickshell -p ~/.config/fajita/quicksettings.qml ipc call fajita-qs toggle 2>/dev/null || quickshell -p ~/.config/fajita/quicksettings.qml"]) // fajita-qs"""
+assert old in s, "power anchor not found; upstream power Panel.qml changed"
+open(p,"w").write(s.replace(old,new,1)); print("patched power")
+PY6
+
 
 
 omarchy-restart-shell >/dev/null 2>&1 || true
