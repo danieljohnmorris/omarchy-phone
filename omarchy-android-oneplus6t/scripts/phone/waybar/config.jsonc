@@ -25,8 +25,11 @@
     "tooltip": false
   },
   "battery": {
-    "format": "{capacity}%",
-    "format-charging": "{capacity}% +",
+    "bat": "bq27411-0",
+    "format": "{icon} {capacity}%",
+    "format-icons": ["\uf244", "\uf243", "\uf242", "\uf241", "\uf240"],
+    "format-charging": "\uf0e7 {capacity}%",
+    "format-plugged": "\uf1e6 {capacity}%",
     "tooltip": false
   }
 }
