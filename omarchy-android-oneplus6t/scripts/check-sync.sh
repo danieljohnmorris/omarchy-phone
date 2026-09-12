@@ -47,7 +47,8 @@ phone/chromium-flags.conf:.config/chromium-flags.conf
 phone/chromium-ua-mobile/manifest.json:.config/chromium/extensions/ua-mobile/manifest.json
 phone/chromium-ua-mobile/ua.js:.config/chromium/extensions/ua-mobile/ua.js
 phone/empty-hint.service:.config/systemd/user/empty-hint.service
-phone/empty-hint.qml:.config/fajita/empty-hint.qml
+phone/close-chip.service:.config/systemd/user/close-chip.service
+phone/close-chip.qml:.config/fajita/close-chip.qml
 phone/notif.qml:.config/fajita/notif.qml
 phone/quicksettings.qml:.config/fajita/quicksettings.qml
 phone/lock.qml:.config/fajita/lock.qml

@@ -1,0 +1,18 @@
+[Unit]
+Description=Floating close button for the focused window (fajita)
+PartOf=graphical-session.target
+After=graphical-session.target
+# never loop: a broken QML file must stay broken rather than respawn forever
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=simple
+Environment=OMARCHY_PATH=/usr/share/omarchy
+ExecStart=/usr/bin/quickshell -p %h/.config/fajita/close-chip.qml
+Restart=on-failure
+RestartSec=10
+Slice=app-graphical.slice
+
+[Install]
+WantedBy=graphical-session.target
