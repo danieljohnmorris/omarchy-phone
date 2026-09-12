@@ -315,13 +315,14 @@ Three device-specific traps, all found the hard way on 2026-09-12:
   before calling `tr->completion_fn`). Every muxed (qmapmux) data connection
   made MM segfault; it then crash-looped under NM autoconnect. Fixed in
   `scripts/mm-patches/`; still present upstream as of 1.25.95.
-- **rmtfs flags are not the data blocker.** The stock unit runs `-r -P -s`
-  (pmOS ships the same, `rmtfs_avoid_writing=true` in their confd). Testing
-  without `-r` changed nothing: the modem's call manager still refuses every
-  PDN with `cm error: no-service` (QMI call-end reason 3,2001) even on a clean
-  boot with the SIM session provisioned, LTE registered and PS attached. The
-  refusal is synchronous in the WDS Start Network response — an internal
-  call-manager decision, still unresolved at the time of writing.
+- **Android's RIL binds the WDS client to a subscription; ModemManager never
+  does.** On this firmware the call manager refuses *every* PDN — internet and
+  IMS alike — with `cm error: no-service` (QMI call-end reason 3,2001) unless
+  the data client sends `WDS Bind Subscription` (primary) before Start
+  Network. The SIM is fine (works in other phones, worked under Android here);
+  registration and PS attach look healthy; the refusal is synchronous in the
+  Start Network response. `mm-patches/0002` sends the bind in MM's connect
+  path — RIL-parity the upstream tree still lacks.
 - **Nothing provisions the SIM's UIM "primary GW" session at boot.** Android's
   RIL normally does it; without it ModemManager init fails with
   "couldn't check unlock status: GW primary session index unknown" and the

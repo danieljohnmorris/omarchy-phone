@@ -2,13 +2,15 @@
 # Build ModemManager from git (pinned) with our patches inside the mounted
 # rootfs chroot, replacing the distro binary.
 #
-# Why: Arch ARM ships MM 1.24.2, which crash-loops (SIGSEGV) on this device
-# the moment a muxed (qmapmux) data connection is set up — use-after-free in
-# the netlink transaction layer, fixed in mm-patches/. pmOS runs a newer MM
-# (1.25.95-git) that only carries the same upstream bug; our patch applies to
-# both. DMS SHUTTING_DOWN handling (needed by this modem firmware) is already
-#  in the pinned commit upstream (31cbf9c1 — committed after being found on a
-#  OnePlus 6T with postmarketOS).
+# Why: Arch ARM ships MM 1.24.2, and even current git needs the fixes below
+# on this device.
+# Two patches, both present in upstream master only as bugs or gaps:
+# - 0001 netlink UAF (crash-loops MM on every muxed data call here)
+# - 0002 bind the WDS client to the primary subscription before Start
+#   Network. Android's RIL always sends this; MM never does, and this
+#   modem's call manager refuses every data call (cm no-service) without it.
+# The pinned commit already handles DMS SHUTTING_DOWN (31cbf9c1, authored
+# after being found on a OnePlus 6T with postmarketOS).
 #
 SCRIPTS_DIR=$(cd "$(dirname "$0")" && pwd)
 #

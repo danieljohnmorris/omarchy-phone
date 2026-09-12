@@ -1,20 +1,8 @@
-netlink: fix use-after-free in transaction_complete()
-
-transaction_complete() removed the transaction from the hash table
-BEFORE calling tr->completion_fn. The remove runs the hash table's
-value-destroy (transaction_free -> g_slice_free(tr)), so every
-completion dereferenced freed memory. It usually survives on stale
-heap and only faults when the chunk is recycled - on a OnePlus 6T
-(sdm845, QRTR/qcom-soc) it SIGSEGVs ModemManager on every muxed
-(qmapmux) data connection, crash-looping the daemon. Present in
-1.24.2 and master (d776ea38); verified fixed on device.
-
-Also parses NLMSG_ERROR payloads from the message actually being
-processed (hdr) instead of always the first message in the buffer,
-and guards the timeout/completion race.
---- a/src/mm-netlink.c	2026-09-12 22:31:27.693135151 +0100
-+++ b/src/mm-netlink.c	2026-09-12 21:54:22.923488308 +0100
-@@ -233,13 +233,18 @@
+diff --git a/src/mm-netlink.c b/src/mm-netlink.c
+index a71b699f..31ea3f70 100644
+--- a/src/mm-netlink.c
++++ b/src/mm-netlink.c
+@@ -233,13 +233,18 @@ transaction_complete (Transaction     *tr,
      task = g_steal_pointer (&tr->completion_task);
      sequence_id = tr->sequence_id;
  
@@ -36,7 +24,7 @@ and guards the timeout/completion race.
              g_task_return_error (task, error);
      } else {
          g_task_return_new_error (task, G_IO_ERROR, g_io_error_from_errno (saved_errno),
-@@ -247,9 +252,17 @@
+@@ -247,9 +252,17 @@ transaction_complete (Transaction     *tr,
                                   sequence_id);
      }
  
@@ -54,7 +42,7 @@ and guards the timeout/completion race.
  static void
  transaction_free (Transaction *tr)
  {
-@@ -522,7 +535,7 @@
+@@ -522,7 +535,7 @@ netlink_messages_cb (GSocket      *socket,
  
          switch (hdr->nlmsg_type) {
          case NLMSG_ERROR:

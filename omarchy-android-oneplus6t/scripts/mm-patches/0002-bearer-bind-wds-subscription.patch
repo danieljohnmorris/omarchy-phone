@@ -1,0 +1,105 @@
+diff --git a/src/mm-bearer-qmi.c b/src/mm-bearer-qmi.c
+index 64d983eb..a6d8f4d6 100644
+--- a/src/mm-bearer-qmi.c
++++ b/src/mm-bearer-qmi.c
+@@ -473,6 +473,7 @@ typedef enum {
+     CONNECT_STEP_IP_METHOD,
+     CONNECT_STEP_IPV4,
+     CONNECT_STEP_WDS_CLIENT_IPV4,
++    CONNECT_STEP_BIND_SUBSCRIPTION_IPV4,
+     CONNECT_STEP_BIND_DATA_PORT_IPV4,
+     CONNECT_STEP_IP_FAMILY_IPV4,
+     CONNECT_STEP_ENABLE_INDICATIONS_IPV4,
+@@ -481,6 +482,7 @@ typedef enum {
+     CONNECT_STEP_GET_CURRENT_SETTINGS_IPV4,
+     CONNECT_STEP_IPV6,
+     CONNECT_STEP_WDS_CLIENT_IPV6,
++    CONNECT_STEP_BIND_SUBSCRIPTION_IPV6,
+     CONNECT_STEP_BIND_DATA_PORT_IPV6,
+     CONNECT_STEP_IP_FAMILY_IPV6,
+     CONNECT_STEP_ENABLE_INDICATIONS_IPV6,
+@@ -1597,6 +1599,36 @@ set_ip_family_ready (QmiClientWds *client,
+     connect_context_step (task);
+ }
+ 
++static void
++bind_subscription_ready (QmiClientWds *client,
++                         GAsyncResult *res,
++                         GTask        *task)
++{
++    ConnectContext                                     *ctx;
++    GError                                             *error = NULL;
++    g_autoptr(QmiMessageWdsBindSubscriptionOutput)      output = NULL;
++    MMBearerQmi                                        *self;
++
++    ctx  = g_task_get_task_data (task);
++    self = MM_BEARER_QMI (g_task_get_source_object (task));
++
++    output = qmi_client_wds_bind_subscription_finish (client, res, &error);
++    if (!output || !qmi_message_wds_bind_subscription_output_get_result (output, &error)) {
++        /* Not all firmwares support (or need) this call; never fatal.
++         * Needed e.g. on SDM845+IPA devices where the call manager must
++         * be told which subscription (SIM session) the data client targets. */
++        mm_obj_warn (self, "WDS bind subscription failed: %s (continuing)", error->message);
++        g_error_free (error);
++        ctx->step++;
++        connect_context_step (task);
++        return;
++    }
++
++    mm_obj_dbg (self, "WDS client bound to primary subscription");
++    ctx->step++;
++    connect_context_step (task);
++}
++
+ static void
+ bind_data_port_ready (QmiClientWds *client,
+                       GAsyncResult *res,
+@@ -2065,6 +2097,23 @@ connect_context_step (GTask *task)
+         ctx->step++;
+     } /* fall through */
+ 
++    case CONNECT_STEP_BIND_SUBSCRIPTION_IPV4:
++        {
++            g_autoptr(QmiMessageWdsBindSubscriptionInput) input = NULL;
++
++            mm_obj_dbg (self, "binding WDS client to primary subscription");
++            input = qmi_message_wds_bind_subscription_input_new ();
++            qmi_message_wds_bind_subscription_input_set_subscription_id (input, QMI_SUBSCRIPTION_TYPE_PRIMARY, NULL);
++            qmi_client_wds_bind_subscription (ctx->client_ipv4,
++                                              input,
++                                              10,
++                                              g_task_get_cancellable (task),
++                                              (GAsyncReadyCallback)bind_subscription_ready,
++                                              task);
++            return;
++        }
++    /* fall through */
++
+     case CONNECT_STEP_BIND_DATA_PORT_IPV4:
+         /* If SIO port given, bind client to it */
+         if (!ctx->sio_port_failed && ctx->endpoint.sio_port != QMI_SIO_PORT_NONE) {
+@@ -2210,6 +2259,23 @@ connect_context_step (GTask *task)
+         ctx->step++;
+     } /* fall through */
+ 
++    case CONNECT_STEP_BIND_SUBSCRIPTION_IPV6:
++        {
++            g_autoptr(QmiMessageWdsBindSubscriptionInput) input = NULL;
++
++            mm_obj_dbg (self, "binding WDS client to primary subscription");
++            input = qmi_message_wds_bind_subscription_input_new ();
++            qmi_message_wds_bind_subscription_input_set_subscription_id (input, QMI_SUBSCRIPTION_TYPE_PRIMARY, NULL);
++            qmi_client_wds_bind_subscription (ctx->client_ipv6,
++                                              input,
++                                              10,
++                                              g_task_get_cancellable (task),
++                                              (GAsyncReadyCallback)bind_subscription_ready,
++                                              task);
++            return;
++        }
++    /* fall through */
++
+     case CONNECT_STEP_BIND_DATA_PORT_IPV6:
+         /* If SIO port given, bind client to it */
+         if (!ctx->sio_port_failed && ctx->endpoint.sio_port != QMI_SIO_PORT_NONE) {
