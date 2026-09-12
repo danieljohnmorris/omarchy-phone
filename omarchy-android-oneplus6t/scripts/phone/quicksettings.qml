@@ -27,10 +27,34 @@ ShellRoot {
   property int brightness: 0 // 1..100
   property bool dragging: false
   property string lastError: ""
-  readonly property color cBg: "#1a1b26f2"
-  readonly property color cText: "#c0caf5"
-  readonly property color cMuted: "#7a7a8a"
-  readonly property color cAccent: "#7aa2f7"
+  property color cBg: "#f21a1b26" // QML hex is #AARRGGBB — alpha first
+  property color cText: "#c0caf5"
+  property color cMuted: "#7a7a8a"
+  property color cAccent: "#7aa2f7"
+  property color cRow: "#24283b" // tile fill (lighter_background)
+  property color cError: "#f7768e"
+
+  // Palette from the active Omarchy theme, watched so a theme switch
+  // repaints a live overlay without a restart (same as empty-hint.qml).
+  FileView {
+    id: colors
+    path: Quickshell.env("HOME") + "/.local/state/omarchy/current/theme/colors.toml"
+    watchChanges: true
+    onFileChanged: reload()
+    onLoaded: {
+      var text = colors.text()
+      function pick(key, fallback) {
+        var m = new RegExp("^\\s*" + key + "\\s*=\\s*\"([^\"]+)\"", "m").exec(text)
+        return m ? m[1] : fallback
+      }
+      root.cBg = "#" + (pick("dark_background", "#1a1b26").replace("#", "f2"))
+      root.cText = pick("bright_foreground", "#c0caf5")
+      root.cMuted = pick("muted", "#7a7a8a")
+      root.cAccent = pick("accent", "#7aa2f7")
+      root.cRow = pick("lighter_background", "#24283b")
+      root.cError = pick("red", "#f7768e")
+    }
+  }
 
   function toggle() {
     root.open = !root.open
@@ -107,8 +131,19 @@ ShellRoot {
     implicitWidth: 380
     implicitHeight: Math.min(card.height + 16, 640)
 
+    // Tap anywhere outside the card closes the overlay; the card and its
+    // controls are declared after this, so they consume their own taps.
+    TapHandler {
+      gesturePolicy: TapHandler.ReleaseWithinBounds
+      onTapped: root.toggle()
+    }
+
     Rectangle {
       id: card
+
+      // Consume taps on the card itself so the window-level outside-tap
+      // handler doesn't close the overlay (same pattern as the shell menu).
+      MouseArea { anchors.fill: parent }
 
       width: parent.width - 16
       x: 8
@@ -159,9 +194,8 @@ ShellRoot {
         Rectangle {
           Layout.fillWidth: true
           radius: 6
-          color: root.wifiState === "enabled" ? "#24283bcc" : "#24283b55"
           implicitHeight: 46
-
+          color: root.wifiState === "enabled" ? Qt.rgba(root.cRow.r, root.cRow.g, root.cRow.b, 0.8) : Qt.rgba(root.cRow.r, root.cRow.g, root.cRow.b, 0.33)
           RowLayout {
             x: 10
             y: 0
@@ -230,9 +264,8 @@ ShellRoot {
         Rectangle {
           Layout.fillWidth: true
           radius: 6
-          color: "#24283bcc"
           implicitHeight: 46
-
+          color: Qt.rgba(root.cRow.r, root.cRow.g, root.cRow.b, 0.8)
           RowLayout {
             x: 10
             y: 0
@@ -262,9 +295,9 @@ ShellRoot {
         Text {
           visible: root.lastError !== ""
           text: root.lastError
-          color: "#f7768e"
           font.family: "JetBrainsMono Nerd Font"
           font.pixelSize: 11
+          color: root.cError
           wrapMode: Text.WrapAnywhere
           Layout.fillWidth: true
         }

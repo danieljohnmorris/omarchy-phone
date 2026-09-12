@@ -171,6 +171,31 @@ assert old in s, "idle anchor not found; upstream idle Service.qml changed"
 open(p,"w").write(s.replace(old,new,1)); print("patched idle lock")
 PY7
 
+# 8) Menu: the scrim MouseArea behind the card only sees pointer events on
+# this build — touch taps outside the card did nothing. Add a TapHandler so
+# tapping outside closes the menu, like a desktop click already does.
+M=/usr/share/omarchy/shell/plugins/menu/Menu.qml
+sudo cp -n "$M" "$M.orig" 2>/dev/null || true
+sudo python3 - "$M" <<'PY8'
+import sys
+p=sys.argv[1]; s=open(p).read()
+if "fajita-menu-tap" in s:
+    print("menu tap already patched"); sys.exit(0)
+old="""    MouseArea {
+      anchors.fill: parent
+      onClicked: root.cancel()
+    }"""
+new=old+"""
+
+    // Phone port: touch taps never synthesize MouseArea clicks here.
+    TapHandler {
+      gesturePolicy: TapHandler.ReleaseWithinBounds
+      onTapped: root.cancel()
+    } // fajita-menu-tap"""
+assert old in s, "menu scrim anchor not found; upstream Menu.qml changed"
+open(p,"w").write(s.replace(old,new,1)); print("patched menu tap")
+PY8
+
 
 
 omarchy-restart-shell >/dev/null 2>&1 || true

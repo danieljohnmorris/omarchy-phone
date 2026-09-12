@@ -23,10 +23,30 @@ ShellRoot {
 
   property bool open: false
   property var entries: []
-  readonly property color cBg: "#1a1b26f2"
-  readonly property color cText: "#c0caf5"
-  readonly property color cMuted: "#7a7a8a"
-  readonly property color cAccent: "#7aa2f7"
+  property color cBg: "#f21a1b26" // QML hex is #AARRGGBB — alpha first
+  property color cText: "#c0caf5"
+  property color cMuted: "#7a7a8a"
+  property color cAccent: "#7aa2f7"
+
+  // Palette from the active Omarchy theme, watched so a theme switch
+  // repaints a live overlay without a restart (same as empty-hint.qml).
+  FileView {
+    id: colors
+    path: Quickshell.env("HOME") + "/.local/state/omarchy/current/theme/colors.toml"
+    watchChanges: true
+    onFileChanged: reload()
+    onLoaded: {
+      var text = colors.text()
+      function pick(key, fallback) {
+        var m = new RegExp("^\\s*" + key + "\\s*=\\s*\"([^\"]+)\"", "m").exec(text)
+        return m ? m[1] : fallback
+      }
+      root.cBg = "#" + (pick("dark_background", "#1a1b26").replace("#", "f2"))
+      root.cText = pick("bright_foreground", "#c0caf5")
+      root.cMuted = pick("muted", "#7a7a8a")
+      root.cAccent = pick("accent", "#7aa2f7")
+    }
+  }
 
   function toggle() {
     root.open = !root.open
@@ -92,13 +112,23 @@ ShellRoot {
     visible: root.open
     color: "transparent"
     implicitHeight: Math.min(card.height + 16, 700)
+    // Tap anywhere outside the card closes the overlay (touch never
+    // synthesizes clicks for MouseArea in some contexts, so use a handler).
+    TapHandler {
+      gesturePolicy: TapHandler.ReleaseWithinBounds
+      onTapped: root.toggle()
+    }
 
     Rectangle {
       id: card
 
+      // Consume taps on the card itself so the window-level outside-tap
+      // handler doesn't close the overlay (same pattern as the shell menu).
+      MouseArea { anchors.fill: parent }
       width: parent.width - 16
       x: 8
       y: 8
+
       radius: 10
       color: root.cBg
       border.color: root.cAccent

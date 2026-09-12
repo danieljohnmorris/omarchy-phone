@@ -84,7 +84,7 @@ ShellRoot {
       }
       root.cBg = pick("dark_background", "#0d0d12")
       root.cText = pick("muted", "#7a7a8a")
-      root.cAccent = pick("blue", "#8d8d8d")
+      root.cAccent = pick("accent", "#8d8d8d")
       root.cBorder = pick("lighter_background", "#2a2a34")
     }
   }
@@ -118,7 +118,7 @@ ShellRoot {
         // wider than its text for exactly this reason.
         height: 56
         radius: 4
-        color: tap.pressed ? root.cBorder : "transparent"
+        color: tap.pressed ? root.cBorder : Qt.rgba(root.cBg.r, root.cBg.g, root.cBg.b, 0.92)
         border.width: 1
         border.color: root.cBorder
 
