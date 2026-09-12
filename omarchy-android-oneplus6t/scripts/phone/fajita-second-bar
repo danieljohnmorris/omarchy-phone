@@ -18,4 +18,6 @@ for _ in $(seq 1 60); do
   sleep 1
 done
 sleep 1
-exec waybar
+# waybar 0.15+ no longer picks up ~/.config/waybar/style.css by default, which
+# unthemed the row after a pacman upgrade. Pass both paths explicitly.
+exec waybar -c "$HOME/.config/waybar/config.jsonc" -s "$HOME/.config/waybar/style.css"
