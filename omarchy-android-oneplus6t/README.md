@@ -216,11 +216,15 @@ what doesn't is at the bottom.
 - Key combos: fastboot = from off with cable OUT, Power+VolUp+VolDown, release
   Power at the vibrate, keep the volumes until "FastBoot Mode". Both volumes
   with the cable IN = EDL (9008). Exit EDL: unplug, VolUp+Power 20 s.
-- Hard crashes land in EDL with no trace: this kernel has no ramoops/pstore
-  backend (`/sys/fs/pstore/` empty after a reboot), so three same-day EDL drops
-  left nothing to diagnose. Root-cause capture needs a kernel with ramoops
-  reserved memory or a serial console. Suspected: load/thermal during
-  unrestricted on-device compiles — cap `-j`/CPUQuota for long builds.
+- Hard crashes land in EDL with no readable trace: ramoops IS wired up
+  (4 MiB reserved at 0xac300000, CONFIG_PSTORE_RAM=y, pstore mounted) but every
+  zone header fails at boot — `ramoops: uncorrectable error in header` — so
+  `/sys/fs/pstore/` is always empty after a crash. Suspects: the EDL/crashdump
+  programmers scribbling the reserved region, or a full power loss not
+  preserving it. Three same-day EDL drops remain undiagnosable; capture needs
+  fixing the header corruption (dump the raw region over ssh immediately after
+  a *soft* reboot that follows a panic) or a serial console. Also cap
+  `-j`/CPUQuota on long on-device builds — the load spikes before each drop.
 - Once Linux runs, the boot partition can be rewritten over ssh with
   `dd if=boot.img of=/dev/disk/by-partlabel/boot_b`, so the button combination
   is only needed for the first flash.
