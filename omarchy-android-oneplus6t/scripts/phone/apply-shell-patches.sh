@@ -235,6 +235,59 @@ if new.splitlines()[-1] in s:
 assert old in s, "notifications anchor not found; upstream Service.qml changed"
 open(p,"w").write(s.replace(old,new,1)); print("patched notifications")
 PY9
+
+# 10) OSK gate: squeekboard is raised over DBus (fajita-osk-toggle), which never
+# sets Qt.inputMethod.visible, so both outside-tap gates above were wrong in
+# opposite directions: the keyboard-strip carve-out never applied while typing,
+# and the menu ignored every tap in the bottom 315px whether the keyboard was
+# up or not (thumb-height taps on the wallpaper did nothing). Poll squeekboard's
+# real Visible property instead.
+sudo python3 - <<'PY10'
+PROBE = """  // Phone port: squeekboard is raised over DBus, which never sets
+  // Qt.inputMethod.visible, so poll its real visibility.
+  property bool fajitaOskUp: false
+  Process {
+    id: fajitaOskProbe
+    command: ["busctl", "--user", "get-property", "sm.puri.OSK0", "/sm/puri/OSK0", "sm.puri.OSK0", "Visible"]
+    stdout: SplitParser { onRead: line => OWNER.fajitaOskUp = line.indexOf("true") >= 0 }
+  }
+  Timer {
+    interval: 400; repeat: true; running: true; triggeredOnStart: true
+    onTriggered: fajitaOskProbe.running = true
+  }
+"""
+
+k = "/usr/share/omarchy/shell/Ui/KeyboardPanel.qml"
+s = open(k).read()
+if "fajitaOskUp" in s:
+    print("keyboard panel osk gate already patched")
+else:
+    assert "Qt.inputMethod && Qt.inputMethod.visible" in s, "run section 1 first"
+    if "import Quickshell.Io" not in s:
+        s = s.replace("import Quickshell\n", "import Quickshell\nimport Quickshell.Io\n", 1)
+    s = s.replace("  mask: Region {", PROBE.replace("OWNER", "root") + "\n  mask: Region {", 1)
+    s = s.replace("(Qt.inputMethod && Qt.inputMethod.visible) ? root.screenH - 315 : root.screenH",
+                  "root.fajitaOskUp ? root.screenH - 315 : root.screenH")
+    s = s.replace("(Qt.inputMethod && Qt.inputMethod.visible) ? 315 : 0", "root.fajitaOskUp ? 315 : 0")
+    open(k, "w").write(s)
+    print("patched keyboard panel osk gate")
+
+m = "/usr/share/omarchy/shell/plugins/menu/Menu.qml"
+s = open(m).read()
+if "fajitaOskUp" in s:
+    print("menu osk gate already patched")
+else:
+    old = "        if (fajitaTap.point.position.y > fajitaTap.parent.height - 315) return\n"
+    assert old in s, "menu tap anchor not found; run section 8 first"
+    s = s.replace(old, "        if (panel.fajitaOskUp && fajitaTap.point.position.y > fajitaTap.parent.height - 315) return\n", 1)
+    tail = "    } // fajita-menu-tap2\n"
+    assert tail in s
+    body = "\n".join("  " + l if l.strip() else l for l in PROBE.replace("OWNER", "panel").split("\n"))
+    s = s.replace(tail, tail + body, 1)
+    open(m, "w").write(s)
+    print("patched menu osk gate")
+PY10
+
 omarchy-restart-shell >/dev/null 2>&1 || true
 # the shell remaps its bar; restart the clock row so it lands beneath it again
 systemctl --user reset-failed waybar.service 2>/dev/null || true
