@@ -343,6 +343,17 @@ Three device-specific traps, all found the hard way on 2026-09-12:
 DMS also parks in `shutting-down` after cold boot; the pinned MM commit handles
 that mode (upstream 31cbf9c1, found on this exact device by lynxis).
 
+Two operational findings from getting the Data button working, both easy to
+rediscover the hard way:
+
+- **Only NetworkManager's `nmcli connection up three` yields a working link.**
+  A raw `mmcli --simple-connect` brings the bearer up and reports an address,
+  but nothing configures `qmapmux0.0`, and hand-configuring it (addr, onlink
+  route) passes TX only — RX stays at zero. NM owns the netdev setup.
+- **polkit denies NM control to seatless sessions.** Both ssh and the shell's
+  process spawner get `Not authorized to control networking`, so anything the
+  shell runs (the Data toggle, Reconnect) must go through `sudo -n nmcli`.
+
 ## Upgrading Omarchy
 
 `omarchy-update` cannot run here: it uses the `[omarchy]` pacman repo, which
@@ -371,11 +382,12 @@ under the notch.
 
 Working: boots unattended into the Omarchy session, bar, menu (touch), on-screen
 keyboard, terminal, theme, GPU acceleration, audio, Wi-Fi, USB networking, ssh,
-screenshots, modem bring-up (SIM provisioning, LTE registration — data
-in progress at the time of writing; `scripts/shot.sh`).
+screenshots (`scripts/shot.sh`), lock screen (swipe-up, cosmetic), and cellular
+data: SIM provisioning, LTE registration, a working connection on the `three`
+NM profile, and a bar widget with a panel, Data toggle and Reconnect.
 
-Not working: Bluetooth (firmware loads, HCI reset times out), lock screen and
-cellular data. I haven't tried the camera or sensors.
+Not working: calls, SMS, Bluetooth (firmware loads, HCI reset times out).
+I haven't tried the camera or sensors.
 
 Tested only on a OnePlus 6T (fajita) with Omarchy 4.0.2 and Hyprland 0.56.2.
 The OnePlus 6 (enchilada) shares the SoC and should need only a DTB change.
