@@ -17,7 +17,10 @@ Environment=GTK_THEME=FajitaOsk
 # on every exit path. A SIGKILL or power cut mid-render would leave it false,
 # and this phone has no physical keyboard to recover with, so every session
 # start puts it back unconditionally.
-ExecStartPre=/usr/bin/gsettings set org.gnome.desktop.a11y.applications screen-keyboard-enabled true
+# `-` prefix: a nonzero exit here (dconf not ready this early, schema missing)
+# must not fail the unit — with StartLimitBurst=3 that would leave squeekboard
+# dead, which is the no-keyboard outcome this line exists to prevent.
+ExecStartPre=-/usr/bin/gsettings set org.gnome.desktop.a11y.applications screen-keyboard-enabled true
 ExecStart=%h/.local/bin/fajita-osk-start
 ExecStopPost=%h/.local/bin/fajita-osk-primer close
 Restart=on-failure
