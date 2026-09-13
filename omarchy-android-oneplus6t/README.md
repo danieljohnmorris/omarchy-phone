@@ -308,16 +308,99 @@ Other phone-specific changes, applied by `phone-setup.sh`:
   the phone looks dead and ignores the power button.
 - Arch's `man-db`, `plocate-updatedb` and `shadow` timers are masked. They
   saturate the SDM845 for minutes after boot and read as a hang.
-- The screensaver's effects engine, `ttfx`, is x86_64-only upstream (Omarchy
-  ships it in the x86_64 repo; the package is otherwise `any`). Upstream
-  publishes no aarch64 release, so `scripts/build-ttfx.sh` compiles the real
-  Rust binary (v0.3.2, github.com/omacom-io/ttfx) in an arm64 Docker container
-  on any host — native on Apple Silicon — against Debian bookworm's older
-  glibc so it runs on the phone's Arch. The binary is committed at
-  `scripts/phone/ttfx-aarch64` and installed to `/usr/local/bin/ttfx`
-  (check-sync tracks it). Do not substitute the Python `tte`: even clamped to
-  20fps it saturates the SDM845, and `omarchy-screensaver`'s respawn loop
-  multiplied it into hundreds of renderers that wedged the session.
+- The screensaver's effects engine, `ttfx`, is published for x86_64 only. This
+  is a gap in the published repo, not a missing port: upstream's
+  `pkgbuilds/ttfx/PKGBUILD` already declares `arch=('x86_64' 'aarch64')` and
+  `omacom/omarchy-pkgs` builds aarch64 (its `build/Dockerfile` is labelled
+  `architectures="x86_64,aarch64"` and pulls from Arch Linux ARM mirrors), but
+  `pkgs.omarchy.org/aarch64` holds one package, `omarchy-keyring` — an
+  `arch=any` keyring, i.e. the first bootstrap step and nothing after it
+  (their Dockerfile notes the ordering problem: an aarch64 build depends on an
+  aarch64 repository only that build can populate). Verified 2026-09-13:
+  x86_64 db 230 packages including `ttfx-0.3.2-1-x86_64.pkg.tar.zst`, aarch64
+  db 1. So `scripts/build-ttfx.sh` compiles the Rust binary (v0.3.2,
+  github.com/omacom-io/ttfx) in an arm64 Docker container on any host — native
+  on Apple Silicon — against Debian bookworm's older glibc so it runs on the
+  phone's Arch. The result is glibc-dynamic, not the static binary upstream's
+  description advertises; musl was tried and abandoned (Alpine's packaged rust
+  cannot build proc-macro crates like `clap_derive` for its own triple). The
+  binary is committed at `scripts/phone/ttfx-aarch64` with its sha256 recorded
+  in the build script, and installed to `/usr/local/bin/ttfx` (check-sync
+  tracks it). Do not substitute the Python `tte`: even clamped to 20fps it
+  saturates the SDM845, and `omarchy-screensaver`'s respawn loop multiplied it
+  into hundreds of renderers that wedged the session (load average 229).
+  Cleaner long-term shape, not yet done: build upstream's own PKGBUILD with
+  `makepkg` in an Arch Linux ARM container, giving a real
+  `ttfx-0.3.2-1-aarch64.pkg.tar.zst` that `pacman -Q` tracks and
+  `fajita-omarchy-update` can upgrade — and that could be handed back upstream
+  to seed their aarch64 repo.
+
+### Screensaver on a phone
+
+A working engine is not a working screensaver. `omarchy-screensaver` and
+`omarchy-launch-screensaver` assume a desktop with a keyboard and a wide
+terminal; five assumptions break on a phone. All five are patched idempotently
+by `apply-shell-patches.sh` (sections 11-13), so a pacman upgrade cannot undo
+them, and each section reports `already patched` on a second run.
+
+- **The wait loop is scoped to the launching tty** (`pgrep -t "${tty#/dev/}"`).
+  With no controlling tty the pgrep matches nothing, the inner loop exits at
+  once and the outer `while true` respawns the renderer forever. The patch
+  drops the tty filter and floors the loop with `sleep 1`, so a renderer that
+  dies instantly degrades to one spawn per second instead of a fork bomb.
+- **The exit check required the window to be *focused*** (`hyprctl
+  activewindow`). When the on-screen keyboard or a non-interactive launch takes
+  focus, the render force-exits immediately. Now it checks the window *exists*
+  (`hyprctl clients | jq 'any(...)'`).
+- **A tap is not a keypress.** The exit path waits on `read -n1`, and touch
+  input produces no stdin bytes, so tapping the screen could never dismiss the
+  render. Enabling mouse click reporting (`printf '\e[?1000h\e[?1006h'`) turns
+  any tap into stdin bytes, which the existing `read` then consumes.
+- **The banner clips.** `screensaver.txt` is 81 columns wide. Measured column
+  counts for this 540px-logical portrait panel (foot, JetBrainsMono): 10pt → 42,
+  9pt → 46, 8pt → 80, 7pt → 95. Only 7pt fits, and 8pt clips exactly the
+  trailing `Y` — which is why several "smaller font" attempts looked almost
+  right. Upstream's `wait_for_terminal_resize` also only blocks while `stty
+  size` reads the literal `24 80` and gives up after 2s, so on this slow device
+  ttfx could still measure an 80-column pty; the patch blocks until the pty
+  actually widens past 80 columns.
+- **The keyboard pops over the render.** foot activates text-input the instant
+  its window maps, which is *before* the render script's first line runs, so
+  per-show `SetVisible false` hides always lose the race (measured: ~0.5s of
+  visible keyboard even with a 0.1s hide loop). The reliable lever is
+  squeekboard's global gate, `org.gnome.desktop.a11y.applications
+  screen-keyboard-enabled`: with it false the panel never maps even if
+  something calls `SetVisible true`. The launcher sets it false before spawning
+  foot; the exit path restores it and sweeps a hide for 1s (focus returning to
+  the parked OSK primer would otherwise pop the panel on the way out).
+  Entry and exit flashes both measured at 0 mapped-layer ticks afterwards.
+
+Two safety notes on that gate. It is global, so a crash mid-render would leave
+a phone with **no keyboard and no physical one to recover with**;
+`squeekboard.service` therefore heals it on every start with
+`ExecStartPre=-/usr/bin/gsettings set ... screen-keyboard-enabled true`. The
+`-` prefix is load-bearing: without it a nonzero exit (dconf not ready that
+early, schema missing) fails the unit, and `StartLimitBurst=3` then leaves
+squeekboard dead — exactly the outcome the line exists to prevent.
+
+Also patched: **re-selecting Screensaver while it runs is a toggle-close.**
+Upstream's "already running" guard just exits, which on a phone leaves the
+render up with no finger path out.
+
+Traps worth knowing before touching any of this:
+
+- `pgrep -f '[o]rg.omarchy.screensaver'` matches *your own* ssh command line if
+  that string appears in it, so a test harness silently toggle-closes the thing
+  it just launched. Build the string indirectly, or match on window class.
+- `pkill -f <script-name>` has the same shape and will kill the ssh session
+  running it. Kill spawned processes by recorded PID.
+- Filter windows by **class**, never process name: the OSK primer runs as
+  `foot --app-id fajita-osk-primer`, so `pkill foot` takes down the keyboard's
+  IME primer while `class == "foot"` correctly excludes it.
+- `systemctl --user restart squeekboard` respawns that primer as a *visible*
+  window for ~4s before `fajita-osk-start` parks it on `special:osk` — which
+  presents as "a terminal opens when I use the power menu". Hide the OSK over
+  DBus; do not cycle the service.
 
 ### Cellular bring-up
 
