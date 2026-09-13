@@ -24,6 +24,7 @@ Panel {
   readonly property var barIdentity: hostWidget || root
 
   property string operatorName: ""
+  property string ownNumber: ""
   property string rat: ""
   property int quality: 0
   property string modemState: ""
@@ -163,6 +164,7 @@ Panel {
       onRead: line => {
         var f = line.trim().split("|")
         if (f.length < 9) return
+        root.ownNumber = f[9] || ""
         root.sampled = true
         root.operatorName = f[0]
         root.rat = f[1]
@@ -255,7 +257,11 @@ Panel {
 
             Text {
               anchors.right: parent.right
-              text: root.sampled ? (root.operatorName || "No operator") : "…"
+              text: {
+                if (!root.sampled) return "…"
+                var name = root.operatorName || "No operator"
+                return root.ownNumber ? name + " · " + root.ownNumber : name
+              }
               color: root.fg
               font.family: root.fontFamily
               font.pixelSize: Style.font.body

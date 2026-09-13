@@ -1,6 +1,6 @@
 #!/bin/bash
 # One-line cellular detail for the fajita.cellular menu:
-#   OPERATOR|RAT|SIGNAL|MODEM|DATA|IP|RX_BYTES|TX_BYTES|PING_MS
+#   OPERATOR|RAT|SIGNAL|MODEM|DATA|IP|RX_BYTES|TX_BYTES|PING_MS|MSISDN
 # RX/TX are cumulative on qmapmux0.0 since connect; PING is a 1.1.1.1
 # round-trip ("-" when data is down). Empty fields render as "—" in Panel.qml.
 out=$(mmcli -m any 2>/dev/null | sed $'s/\x1b\\[[0-9;]*m//g')
@@ -23,4 +23,7 @@ if ip -4 addr show qmapmux0.0 2>/dev/null | grep -q inet; then
 else
   d=down; ip=""; rx=""; tx=""; ping_ms=""
 fi
-echo "${op:-}|$rat|${q:-0}|${st:-unknown}|$d|${ip:-}|${rx:-0}|${tx:-0}|${ping_ms:--}"
+# Own number (MSISDN): +CNUM via ModemManager's raw command; empty when the
+# network or SIM hasn't published it.
+num=$(mmcli -m any --command="+CNUM" 2>/dev/null | grep -oE '"\+?[0-9]{7,15}"' | head -1 | tr -d '"')
+echo "${op:-}|$rat|${q:-0}|${st:-unknown}|$d|${ip:-}|${rx:-0}|${tx:-0}|${ping_ms:--}|${num:-}"
