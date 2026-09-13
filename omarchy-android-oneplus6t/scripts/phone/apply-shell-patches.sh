@@ -291,32 +291,193 @@ else:
 PY10
 
 
-# 11) Screensaver respawn loop: omarchy-screensaver's wait condition is scoped
-# to the launching tty (`pgrep -t "$tty" -x ttfx`). Launched without a
-# controlling tty (ssh, some launchers) the pgrep matches nothing, the inner
-# loop exits instantly and the outer `while true` respawns ttfx forever — the
-# load-229 wedge. ttfx only ever runs under the screensaver, so the tty filter
-# buys nothing: wait on any ttfx.
+# 11) Screensaver, phone port. Five upstream assumptions break on a phone:
+#   a) The wait loop is scoped to the launching tty (`pgrep -t "$tty"`). With no
+#      controlling tty (ssh, some launchers) it matches nothing, the inner loop
+#      exits at once and the outer `while true` respawns ttfx forever: the
+#      load-229 wedge. ttfx only runs under the screensaver, so wait on any
+#      ttfx, and floor the respawn at 1/s so a broken engine cannot storm.
+#   b) The focus check requires the window to be *active*. The OSK stealing
+#      focus (or an ssh launch) makes it inactive, force-exiting the render
+#      instantly. Require the window to exist instead.
+#   c) foot's text-input focus auto-shows squeekboard over the render, and each
+#      tap re-shows it, so a one-shot hide loses the race: re-assert it every
+#      loop pass. NEVER stop/start squeekboard.service here - fajita-osk-start
+#      spawns the primer as a visible foot window and only parks it ~4s later,
+#      so cycling the service flashes a terminal onto the screen.
+#   d) Taps are not keys, so `read -n1` never fires and there is no finger path
+#      out of the render. Mouse click reporting turns a tap into stdin bytes.
+#   e) exit must restore the OSK, or the rest of the session loses its keyboard.
 S=/usr/bin/omarchy-screensaver
 sudo cp -n "$S" "$S.orig" 2>/dev/null || true
 sudo python3 - "$S" <<'PY11'
 import sys
 p = sys.argv[1]; s = open(p).read()
-old = '  while pgrep -t "${tty#/dev/}" -x ttfx >/dev/null; do\n'
-# Three states: pristine tty form, the earlier un-floored patch, and this
-# version. Floor the respawn loop: if ttfx exits immediately (missing
-# branding file, bad args), pgrep is false at once and the outer while-true
-# storms the CPU; 1s between spawns degrades that to 1 spawn/sec.
-unfloored = '  while pgrep -x ttfx >/dev/null; do\n'
-new = '  sleep 1\n  while pgrep -x ttfx >/dev/null; do\n'
-if new in s:
-    print("screensaver wait already patched"); sys.exit(0)
-elif unfloored in s:
-    open(p, "w").write(s.replace(unfloored, new, 1)); print("floored screensaver respawn")
-    sys.exit(0)
-assert old in s, "screensaver wait anchor not found; upstream omarchy-screensaver changed"
-open(p, "w").write(s.replace(old, new, 1)); print("patched screensaver wait")
+if "Phone port" in s:
+    print("screensaver already patched"); sys.exit(0)
+
+HIDE = 'busctl --user call sm.puri.OSK0 /sm/puri/OSK0 sm.puri.OSK0 SetVisible b false'
+# squeekboard honours this key globally: with it false the panel never maps,
+# even if something calls SetVisible true. Racing per-show hides always lost
+# (foot activates text-input as it maps, before this script's first line).
+A11Y = 'gsettings set org.gnome.desktop.a11y.applications screen-keyboard-enabled'
+ENABLE = A11Y + ' true'
+
+# b) window exists, not window focused
+old = "  hyprctl activewindow -j | jq -e '.class == \"org.omarchy.screensaver\"' >/dev/null 2>&1\n"
+assert old in s, "screensaver focus anchor not found; upstream omarchy-screensaver changed"
+s = s.replace(old,
+    "  # Phone port: require the window to EXIST, not be the active/focused\n"
+    "  # client. Launched from ssh or when the OSK takes focus, the window is\n"
+    "  # never \"active\" and the original check force-exited the render.\n"
+    "  hyprctl clients -j | jq -e 'any(.[]; .class == \"org.omarchy.screensaver\")' >/dev/null 2>&1\n", 1)
+
+# e) restore the OSK on exit. The render disables squeekboard through the
+# a11y key (see the launcher patch); re-enable it here, then sweep the hide
+# for a second so the primer regaining focus does not pop the panel on the
+# way out - that was the "keyboard shows coming out of screensaver" flash.
+old = "  pkill -f '[o]rg.omarchy.screensaver' 2>/dev/null\n"
+assert old in s, "screensaver exit anchor not found"
+s = s.replace(old, old +
+    "  " + ENABLE + " >/dev/null 2>&1 || true\n"
+    "  (for _ in 1 2 3 4 5 6 7 8 9 10; do\n"
+    "     " + HIDE + " >/dev/null 2>&1 || true; sleep 0.1\n"
+    "   done) >/dev/null 2>&1 &\n", 1)
+
+# c+d) hide the OSK and enable mouse reporting BEFORE the resize wait. foot
+# activates text-input the moment it maps, so squeekboard pops immediately;
+# hiding after wait_for_terminal_resize left it on screen for that whole
+# window (up to 2s) — the "keyboard shows briefly" flash.
+old = "wait_for_terminal_resize\n"
+assert old in s, "screensaver resize anchor not found"
+s = s.replace(old,
+    "# Phone port: foot text-input focus makes squeekboard auto-show over the\n"
+    "# render. Hide it first (SetVisible; the Visible property is read-only).\n"
+    + HIDE + " || true\n"
+    "\n# Phone port: taps are not keys. Mouse click reporting turns any tap into\n"
+    "# stdin bytes so the read below fires and the screensaver exits.\n"
+    "printf '\\e[?1000h\\e[?1006h'\n\n" + old, 1)
+
+# a+c) floor the respawn, drop the tty filter, re-assert the hide each pass
+old = '  while pgrep -t "${tty#/dev/}" -x ttfx >/dev/null; do\n    if read -n1 -t 1'
+assert old in s, "screensaver wait anchor not found"
+s = s.replace(old,
+    "  sleep 1\n"
+    "  while pgrep -x ttfx >/dev/null; do\n"
+    "    " + HIDE + " >/dev/null 2>&1 || true\n"
+    "    if read -n1 -t 0.3", 1)
+
+open(p, "w").write(s); print("patched screensaver")
 PY11
+
+# 12) Screensaver canvas: the OMARCHY banner is 81 columns wide. Measured
+# column counts for this 540px-logical portrait panel (foot, JetBrainsMono):
+# 18pt=23, 10pt=42, 9pt=46, 8pt=80, 7pt=95. So anything above 7pt clips —
+# 8pt clips exactly one character, the trailing "Y". 7pt is the first size
+# that fits, with margin. Upstream's wait_for_terminal_resize also only
+# blocks while `stty size` reads exactly "24 80" and gives up after 2s, so on
+# this slow device ttfx can still measure an 80-column pty and clip the
+# trailing letter. Block until the resize actually widens the pty.
+F=/usr/share/omarchy/default/foot/screensaver.ini
+sudo cp -n "$F" "$F.orig" 2>/dev/null || true
+sudo python3 - "$F" <<'PY12'
+import sys, re
+p = sys.argv[1]; s = open(p).read()
+if "size=7" in s:
+    print("screensaver font already patched"); sys.exit(0)
+s2, n = re.subn(r"size=\d+", "size=7", s, count=1)
+assert n == 1, "screensaver.ini font anchor not found"
+open(p, "w").write(s2); print("patched screensaver font")
+PY12
+sudo python3 - "$S" <<'PY12B'
+import sys
+p = sys.argv[1]; s = open(p).read()
+if "widen past 80 columns" in s:
+    print("screensaver resize wait already patched"); sys.exit(0)
+old = '  while ((SECONDS < deadline)) && [[ $(stty size 2>/dev/null) == "24 80" ]]; do\n'
+assert old in s, "resize-wait anchor not found; upstream omarchy-screensaver changed"
+new = ('  # Phone port: wait for the pty to actually widen past 80 columns, not\n'
+       '  # just to leave the literal "24 80" state; ttfx measures once and a\n'
+       '  # late resize clips the banner.\n'
+       '  while ((SECONDS < deadline)) && [[ $(stty size 2>/dev/null | cut -d" " -f2) -le 80 ]]; do\n')
+open(p, "w").write(s.replace(old, new, 1)); print("patched screensaver resize wait")
+PY12B
+
+# 13) Screensaver launcher: upstream's "already running" guard just exits, so
+# re-selecting Screensaver while it renders does nothing - on a phone that
+# leaves the render with no obvious way out. Make it a toggle-close.
+L=/usr/bin/omarchy-launch-screensaver
+sudo cp -n "$L" "$L.orig" 2>/dev/null || true
+sudo python3 - "$L" <<'PY13'
+import sys
+p = sys.argv[1]; s = open(p).read()
+
+A11Y = 'gsettings set org.gnome.desktop.a11y.applications screen-keyboard-enabled'
+HIDE = 'busctl --user call sm.puri.OSK0 /sm/puri/OSK0 sm.puri.OSK0 SetVisible b false'
+
+if "Phone port: re-selecting" in s:
+    print("screensaver launcher already patched")
+else:
+    old = "pgrep -f '[o]rg.omarchy.screensaver' && exit 0\n"
+    assert old in s, "launcher guard anchor not found; upstream omarchy-launch-screensaver changed"
+    new = ("# Phone port: re-selecting Screensaver while it runs is a toggle-close.\n"
+           "# Upstream just exited, leaving the render up with no finger path out.\n"
+           "# Re-enable the OSK here too: this path bypasses exit_screensaver, and\n"
+           "# leaving the a11y key false would cost the session its keyboard.\n"
+           "if pgrep -f '[o]rg.omarchy.screensaver' >/dev/null; then\n"
+           "  pkill -x ttfx 2>/dev/null\n"
+           "  pkill -f '[o]rg.omarchy.screensaver' 2>/dev/null\n"
+           "  " + A11Y + " true >/dev/null 2>&1 || true\n"
+           "  " + HIDE + " || true\n"
+           "  exit 0\n"
+           "fi\n")
+    open(p, "w").write(s.replace(old, new, 1)); print("patched screensaver launcher toggle")
+
+# 13b) Suppress the OSK BEFORE foot is spawned. foot activates text-input the
+# instant it maps, which is before omarchy-screensaver's first line runs, so a
+# hide inside the render script can only ever catch up - measured 0.5s of
+# visible keyboard, the "keyboard shows briefly going into screensaver" flash.
+# The a11y key stops the panel mapping at all; exit_screensaver restores it.
+s = open(p).read()
+if "Phone port: pre-hide" not in s:
+    old2 = "focused=$(omarchy-hyprland-monitor-focused)\n"
+    assert old2 in s, "launcher monitor anchor not found"
+    s = s.replace(old2,
+        "# Phone port: pre-hide the OSK. foot takes text-input focus as it maps,\n"
+        "# before the render script runs, so this has to happen out here. The\n"
+        "# a11y key is authoritative: squeekboard will not map while it is false.\n"
+        + A11Y + " false >/dev/null 2>&1 || true\n"
+        + HIDE + " || true\n\n"
+        + old2, 1)
+    open(p, "w").write(s); print("patched screensaver launcher pre-hide")
+PY13
+
+# 14) Menu dismissal flashed the keyboard: the menu layer owns an active
+# text-input, and on unmap the input-method deactivation trails the unmap, so
+# squeekboard maps its layer and shows for ~0.9s before self-hiding. Assert the
+# hide from the menu's own close handler instead of waiting for the deactivate.
+M=/usr/share/omarchy/shell/plugins/menu/Menu.qml
+sudo cp -n "$M" "$M.orig" 2>/dev/null || true
+sudo python3 - "$M" <<'PY14'
+import sys
+p = sys.argv[1]; s = open(p).read()
+if "fajitaOskHide" in s:
+    print("menu osk hide already patched"); sys.exit(0)
+anchor = '    // Phone port: squeekboard is raised over DBus, which never sets\n'
+assert anchor in s, "menu probe anchor not found; run the menu osk gate section first"
+s = s.replace(anchor,
+    '    // Phone port: the menu layer owns an active text-input. On unmap the\n'
+    '    // input-method deactivation trails the unmap, so squeekboard maps its\n'
+    '    // layer and flashes before self-hiding. Assert the hide on close.\n'
+    '    Process {\n'
+    '      id: fajitaOskHide\n'
+    '      command: ["busctl", "--user", "call", "sm.puri.OSK0", "/sm/puri/OSK0", "sm.puri.OSK0", "SetVisible", "b", "false"]\n'
+    '    }\n' + anchor, 1)
+old = '    onVisibleChanged: if (!visible) { cardTop = -1; maxRowsHeight = -1 }\n'
+assert old in s, "menu onVisibleChanged anchor not found; upstream Menu.qml changed"
+s = s.replace(old, '    onVisibleChanged: if (!visible) { cardTop = -1; maxRowsHeight = -1; fajitaOskHide.running = true }\n', 1)
+open(p, "w").write(s); print("patched menu osk hide")
+PY14
 omarchy-restart-shell >/dev/null 2>&1 || true
 # the shell remaps its bar; restart the clock row so it lands beneath it again
 systemctl --user reset-failed waybar.service 2>/dev/null || true

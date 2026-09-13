@@ -1,0 +1,152 @@
+#!/bin/bash
+# Call/SMS event watcher (user service). q6voiced (system service) reacts to
+# the same ModemManager DBus signals by opening/closing the VoiceMMode1 FE
+# PCM; this user-side twin does everything q6voiced cannot see:
+#
+#   1. Flip the WirePlumber card profile HiFi <-> "Voice Call" while any call
+#      is audio-bearing. The UCM verb drives the backend muxes (earpiece +
+#      bottom mic) that route the hostless call PCM; MM state alone doesn't.
+#   2. Raise calls.qml (spawn-or-ipc) so an incoming call is on screen even
+#      when no UI is running, and re-notify incoming calls once per path.
+#   3. Ingest incoming SMS into the fajita-sms store (modem storage is then
+#      emptied), raise messages.qml, notify once per object path.
+#
+# Reconcile is idempotent and driven by BOTH dbus events and a 5s poll, so a
+# missed signal (monitor restart, MM reload) self-heals.
+set -uo pipefail
+
+export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
+CARD="alsa_card.platform-sound"
+UI_CALLS="$HOME/.config/fajita/calls.qml"
+UI_MESSAGES="$HOME/.config/fajita/messages.qml"
+declare -A notified   # call/SMS path -> 1, so one notify per object
+
+# True when any existing call needs the call-audio path. Matches q6voiced's
+# own predicate (dialing/ringing-out/active) plus the inbound pair: incoming
+# calls flip the profile only once accepted, but 'waiting' and 'held' calls
+# may return to active, and MM reports accepted-incoming as active anyway.
+call_audio_needed() {
+  local path state
+  while IFS='|' read -r path state _dir _num; do
+    [ -n "$path" ] || continue
+    case "$state" in
+      dialing|ringing-out|ringingout|active|held|waiting) return 0 ;;
+    esac
+  done < <(fajita-call list 2>/dev/null)
+  return 1
+}
+
+raise() { # $1 = qml path, $2 = ipc target — ipc wins, spawn if none running
+  quickshell -p "$1" ipc call "$2" show >/dev/null 2>&1 ||
+    quickshell -p "$1" >/dev/null 2>&1 || true
+}
+
+reconcile() {
+  # --- profile flip ---
+  local want
+  if call_audio_needed; then want="Voice Call"; else want="HiFi"; fi
+  local cur
+  cur=$(pactl list cards 2>/dev/null | awk -v c="$CARD" '
+    $1 == "Name:" { n = $2 }
+    /Active Profile:/ && n == c { $1 = $2 = ""; gsub(/^[ :]+|[ :]+$/, ""); print; exit }')
+  if [ -n "$cur" ] && [ "$cur" != "$want" ]; then
+    pactl set-card-profile "$CARD" "$want" >/dev/null 2>&1 || true
+  fi
+
+  # --- incoming call: UI + one-shot notify per call path ---
+  local live=""
+  while IFS='|' read -r path state _dir number; do
+    [ -n "$path" ] || continue
+    live="$live $path"
+    case "$state" in
+      incoming|ringing-in|ringingin)
+        raise "$UI_CALLS" fajita-calls
+        if [ -z "${notified[$path]:-}" ]; then
+          notified[$path]=1
+          notify-send -u critical -t 0 "Incoming call" "${number:-unknown}" >/dev/null 2>&1 || true
+        fi
+        ;;
+    esac
+  done < <(fajita-call list 2>/dev/null)
+
+  # --- prune per-call notified entries whose objects are gone ---
+  local p
+  for p in "${!notified[@]}"; do
+    case "$p" in
+      /org/freedesktop/ModemManager1/Call/*)
+        [[ " $live " == *" $p "* ]] || unset "notified[$p]"
+        ;;
+    esac
+  done
+}
+
+# --- SMS: ingest to store, notify + raise messages UI, once per object path.
+# The Added payload is (path, received); 'received false' is our own outgoing
+# create — skip it, the send path already appends to the store itself.
+on_sms() { # $1 = sms path, $2 = received boolean ("true"/"false")
+  [ "$2" = false ] && return 0
+  local preview number
+  preview=$(fajita-sms ingest "$1" 2>/dev/null) || return 0
+  [ -n "$preview" ] || return 0   # not a received SMS (or duplicate)
+  number=${preview%%|*}
+  raise "$UI_MESSAGES" fajita-messages
+  if [ -z "${notified[$1]:-}" ]; then
+    notified[$1]=1
+    notify-send -t 10000 "SMS from ${number:-unknown}" "${preview#*|}" >/dev/null 2>&1 || true
+  fi
+}
+
+# Event stream. CallAdded/CallDeleted are on Modem.Voice, per-call StateChanged
+# on the Call interface, SMS Added on Modem.Messaging. dbus-monitor prints one
+# signal per block ("signal time=" header, then body); awk folds each block
+# into one decision line so bash never tracks cross-line state:
+#   call                  -> call lifecycle, reconcile
+#   SMS <path> <received> -> Messaging Added (received=false is our own send)
+dbus-monitor --system \
+  "type='signal',interface='org.freedesktop.ModemManager1.Modem.Voice',member='CallAdded'" \
+  "type='signal',interface='org.freedesktop.ModemManager1.Modem.Voice',member='CallDeleted'" \
+  "type='signal',interface='org.freedesktop.ModemManager1.Call',member='StateChanged'" \
+  "type='signal',interface='org.freedesktop.ModemManager1.Modem.Messaging',member='Added'" |
+awk '
+  function flush_sms() {
+    if (member == "Added" && path != "") { print "SMS", path, recv; fflush() }
+    member = path = ""; recv = "true"
+  }
+  /^signal / {
+    flush_sms()
+    if (match($0, /member=[A-Za-z]+/)) member = substr($0, RSTART + 7, RLENGTH - 7)
+    # Call signals carry no payload we need: decide now, so reconcile does not
+    # wait for the next signal to arrive.
+    if (member != "Added") { print "call"; fflush(); member = "" }
+    next
+  }
+  member == "Added" && path == "" && /\/org\/freedesktop\/ModemManager1\/SMS\// {
+    if (match($0, /\/org\/freedesktop\/ModemManager1\/SMS\/[0-9]+/)) path = substr($0, RSTART, RLENGTH)
+    next
+  }
+  # The Added payload is (path, received); the boolean completes the block.
+  member == "Added" && path != "" && /boolean/ {
+    recv = ($NF == "true") ? "true" : "false"
+    flush_sms()
+  }
+  END { flush_sms() }
+' |
+while IFS=' ' read -r ev path recv; do
+  case "$ev" in
+    call) reconcile ;;
+    SMS)  on_sms "$path" "${recv:-true}" ;;
+  esac
+done &
+
+
+# Fallback poll: heals anything the event stream missed (monitor restart,
+# MM crash-reload) and re-syncs the profile + notifications every cycle.
+while :; do
+  reconcile
+  # SMS Added signals can be missed too: sweep any objects still on the modem.
+  fajita-sms sweep >/dev/null 2>&1 || true
+  sleep 5
+done &
+
+trap 'kill "$(jobs -p)" 2>/dev/null; exit 0' TERM INT
+wait

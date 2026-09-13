@@ -1,0 +1,76 @@
+#!/bin/bash
+# Voice-call control helper. Everything shells out to mmcli; the polkit rule
+# (51-fajita-modem.rules) lets seatless callers (ssh, systemd --user units)
+# run call-control ops, so no sudo here.
+#
+# mmcli contract (verified against cli/mmcli-call.c + cli/mmcli-modem-voice.c
+# at our pinned MM d776ea38): --voice-create-call only creates the call
+# object — dialing is a separate `mmcli -o PATH --start`. accept/hangup are
+# also call-object ops. -K gives key : value output (no ANSI, no columns).
+#
+# Output of `list` is machine-readable: one call per line,
+#   PATH|STATE|DIRECTION|NUMBER
+# STATE/DIRECTION are mmcli's lowercase values with dashes kept.
+#
+# Usage: fajita-call list | start NUMBER | accept PATH | hangup PATH | hangup-all
+set -uo pipefail
+
+MODEM=any
+
+# `--voice-list-calls -K` prints one "modem.voice.call.value[N] : path" line
+# per call (1-based); normalize to bare paths, one per line.
+list_paths() {
+  mmcli -m "$MODEM" --voice-list-calls -K 2>/dev/null |
+    awk -F' : ' '$1 ~ /^modem\.voice\.call\.value\[/ {print $2}'
+}
+
+# Pull one "key : value" field out of `mmcli -o PATH -K` output.
+kv() { awk -F' : ' -v k="$1" '$1==k {print $2; exit}' <<<"$2"; }
+
+list() {
+  local path info state direction number
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    info=$(mmcli -o "$path" -K 2>/dev/null) || continue
+    state=$(kv call.properties.state "$info")
+    direction=$(kv call.properties.direction "$info")
+    number=$(kv call.properties.number "$info")
+    echo "$path|${state:--}|${direction:--}|${number:--}"
+  done < <(list_paths)
+}
+
+start() {
+  local out path
+  out=$(mmcli -m "$MODEM" --voice-create-call="number=$1" 2>&1) || { echo "$out" >&2; return 1; }
+  path=$(sed -n 's/Successfully created new call: //p' <<<"$out" | head -1)
+  [ -n "$path" ] || { echo "no call path in mmcli output: $out" >&2; return 1; }
+  mmcli -o "$path" --start >/dev/null
+}
+
+case "${1:-}" in
+  list)
+    list
+    ;;
+  start)
+    re='^[+0-9][0-9 +()-]*$'
+    if [ $# -ne 2 ] || ! [[ "$2" =~ $re ]]; then
+      echo "usage: fajita-call start NUMBER" >&2; exit 2
+    fi
+    start "$2"
+    ;;
+  accept)
+    [ $# -eq 2 ] || { echo "usage: fajita-call accept PATH" >&2; exit 2; }
+    mmcli -o "$2" --accept >/dev/null
+    ;;
+  hangup)
+    [ $# -eq 2 ] || { echo "usage: fajita-call hangup PATH" >&2; exit 2; }
+    mmcli -o "$2" --hangup >/dev/null
+    ;;
+  hangup-all)
+    mmcli -m "$MODEM" --voice-hangup-all >/dev/null
+    ;;
+  *)
+    sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//' >&2
+    exit 2
+    ;;
+esac

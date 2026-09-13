@@ -17,6 +17,14 @@
 #
 # Output: phone/ttfx-aarch64 — install to /usr/local/bin/ttfx on the device
 # (phone-setup.sh does this; check-sync.sh tracks it).
+#
+# The committed phone/ttfx-aarch64 is:
+#   sha256 8d93aaeea60e25b7abae4d9eab9adb885455b68770d54b3fab6e3c93188db87a
+#   built with rustc 1.98.1 from tag v0.3.2
+# Verify the tracked binary with `shasum -a 256 phone/ttfx-aarch64`. A rebuild
+# will NOT reproduce that hash byte-for-byte: the source tag is pinned but
+# rustup installs whatever rustc is current, and the build embeds a BuildID.
+# Compare behaviour (`ttfx --version` reports 0.3.2), not bytes.
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 OUT="$HERE/phone/ttfx-aarch64"

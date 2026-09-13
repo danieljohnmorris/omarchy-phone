@@ -1,0 +1,18 @@
+[Unit]
+Description=fajita call/SMS watcher (profile flip + UI raise)
+PartOf=graphical-session.target
+After=graphical-session.target
+# Like empty-hint: a genuinely stuck watcher may respawn, but not forever.
+# (These are [Unit] keys; systemd ignores them under [Service].)
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/fajita-call-watch
+# dbus-monitor and the poll loop are killed by the trap; systemd reaps anyway.
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=graphical-session.target

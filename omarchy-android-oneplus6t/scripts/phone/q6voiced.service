@@ -1,0 +1,19 @@
+[Unit]
+Description=Voice call audio daemon (q6voiced, postmarketOS)
+Documentation=https://gitlab.com/postmarketOS/q6voiced
+After=ModemManager.service
+PartOf=ModemManager.service
+
+[Service]
+Type=simple
+# q6voiced takes the PCM device as its only argument (no config file; the
+# /etc/conf.d/q6voiced in pmOS is their OpenRC wrapper's convention).
+# hw:0,6 = card 0 (O6T) device 6 (VoiceMMode1), see ls /dev/snd/by-path and
+# the card's PCM list. Backend routing (earpiece + bottom mic) is done by the
+# UCM "Voice Call" verb, flipped by fajita-call-watch on the user side.
+ExecStart=/usr/local/bin/q6voiced hw:0,6
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

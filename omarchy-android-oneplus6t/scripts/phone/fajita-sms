@@ -1,0 +1,94 @@
+#!/bin/bash
+# SMS helper. Shells out to mmcli (polkit rule 51-fajita-modem.rules allows
+# seatless callers); jq builds/reads JSON so message text with newlines,
+# commas and pipes never corrupts the store.
+#
+# Store: ~/.local/state/fajita/messages.jsonl, one object per line:
+#   {"ts":1694640000,"dir":"in"|"out","number":"+44…","text":"…"}
+# messages.qml reads the file directly; this helper is the only writer.
+#
+#   fajita-sms send NUMBER TEXT     create+send, append to store
+#   fajita-sms ingest PATH          store a received SMS, free modem storage,
+#                                   print "NUMBER|first-60-chars" for the
+#                                   watcher's notification
+#   fajita-sms sweep                ingest every received SMS still sitting in
+#                                   modem storage (boot-time catch-up)
+#   fajita-sms last NUMBER [N]      print the last N lines for one number
+set -euo pipefail
+
+MODEM="${FDM_MODEM:-any}"
+STORE="$HOME/.local/state/fajita/messages.jsonl"
+mkdir -p "$(dirname "$STORE")"; touch "$STORE"
+
+# mmcli property strings are comma-separated; quoted values may contain
+# commas, but no quote character can survive the parser (unmatched quote),
+# so drop double quotes from user text.
+create_and_send() { # $1 number, $2 text
+  local path
+  path=$(mmcli -m "$MODEM" --messaging-create-sms="number=\"$1\",text=\"$2\"" |
+    sed -n 's/^Successfully created new SMS: //p')
+  [ -n "$path" ] || { echo "no SMS path from mmcli" >&2; return 1; }
+  mmcli -m "$MODEM" --messaging-send-sms="$path" >/dev/null
+  mmcli -m "$MODEM" --messaging-delete-sms="$path" >/dev/null 2>&1 || true
+}
+
+append() { # dir number text ts
+  jq -cn --argjson ts "$4" --arg dir "$1" --arg number "$2" --arg text "$3" \
+    '{ts:$ts,dir:$dir,number:$number,text:$text}' >> "$STORE"
+}
+
+# GSM timestamps are 3GPP TS 27.005 YYMMDDTHHMMSS(±HH[MM]), two-digit year
+ts_to_epoch() {
+  local iso
+  iso=$(sed -E 's/^(..)(..)(..)T(..)(..)(..)([+-])(..)(..)?$/20\1-\2-\3 \4:\5:\6 \7\8:\9/' <<<"$1")
+  date -d "$iso" +%s 2>/dev/null || date +%s
+}
+
+ingest() { # $1 = /org/freedesktop/ModemManager1/SMS/N
+  local j number text state ts
+  j=$(mmcli -J -s "$1" 2>/dev/null) || return 0
+  # -J output is flat with dotted keys (verified in cli/mmcli-output.c);
+  # accept the nested shape too in case that changes upstream.
+  number=$(jq -r 'getpath(["sms.number"]) // getpath(["sms","number"]) // ""' <<<"$j")
+  text=$(jq -r 'getpath(["sms.text"]) // getpath(["sms","text"]) // ""' <<<"$j")
+  state=$(jq -r 'getpath(["sms.state"]) // getpath(["sms","state"]) // ""' <<<"$j")
+  [ "$state" = received ] || { mmcli -m "$MODEM" --messaging-delete-sms="$1" >/dev/null 2>&1 || true; return 0; }
+  ts=$(jq -r 'getpath(["sms.timestamp"]) // getpath(["sms","timestamp"]) // ""' <<<"$j")
+  ts=$(ts_to_epoch "${ts:-$(date +%Y%m%dT%H%M%S%z)}")
+  # Dedupe on the full tuple: an Added signal and a sweep can race.
+  if jq -e --argjson ts "$ts" --arg number "$number" --arg text "$text" \
+       'select(.ts==$ts and .number==$number and .text==$text)' "$STORE" | grep -q .; then
+    mmcli -m "$MODEM" --messaging-delete-sms="$1" >/dev/null 2>&1 || true
+    return 0
+  fi
+  append in "$number" "$text" "$ts"
+  mmcli -m "$MODEM" --messaging-delete-sms="$1" >/dev/null 2>&1 || true
+  printf '%s|%s\n' "$number" "$(head -c 60 <<<"$text")"
+}
+
+case "${1:-}" in
+  send)
+    [ $# -eq 3 ] || { echo "usage: fajita-sms send NUMBER TEXT" >&2; exit 2; }
+    create_and_send "$2" "${3//\"/}"
+    append out "$2" "${3//\"/}" "$(date +%s)"
+    ;;
+  ingest)
+    [ $# -eq 2 ] || { echo "usage: fajita-sms ingest PATH" >&2; exit 2; }
+    ingest "$2"
+    ;;
+  sweep)
+    while IFS= read -r path; do
+      [ -n "$path" ] || continue
+      ingest "$path"
+    done < <(mmcli -m "$MODEM" --messaging-list-sms 2>/dev/null |
+      grep -oE '/org/freedesktop/ModemManager1/SMS/[0-9]+')
+    ;;
+  last)
+    [ $# -ge 2 ] || { echo "usage: fajita-sms last NUMBER [N]" >&2; exit 2; }
+    jq -r --arg n "$2" 'select(.number==$n) | "\(.ts)|\(.dir)|\(.text)"' "$STORE" | tail -n "${3:-20}"
+    ;;
+  *)
+    sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//' >&2
+    exit 2
+    ;;
+esac

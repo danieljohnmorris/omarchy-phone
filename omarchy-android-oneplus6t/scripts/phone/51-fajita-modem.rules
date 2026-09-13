@@ -1,0 +1,12 @@
+// Let the phone's user control the modem (calls, SMS) without a polkit prompt.
+// The calls/messages apps and their incoming-watcher systemd --user service
+// talk to ModemManager from seatless contexts, where the default policy
+// answers "challenge" and there is no keyboard to type the password. Members
+// of wheel already have passwordless sudo here, so this hides no new
+// capability (sudo mmcli would work anyway).
+polkit.addRule(function(action, subject) {
+  if (subject.isInGroup("wheel") &&
+      action.id.indexOf("org.freedesktop.ModemManager1.") === 0) {
+    return polkit.Result.YES;
+  }
+});
