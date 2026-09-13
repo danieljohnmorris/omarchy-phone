@@ -27,7 +27,7 @@ ShellRoot {
 
   // Pre-load fallbacks only; every colour below is replaced from the active
   // Omarchy theme in the FileView. QML hex is #AARRGGBB — alpha first.
-  property color cBg: "#f2111c18"
+  property color cBg: "#ff111c18"
   property color cText: "#F7E8B2"
   property color cMuted: "#53685B"
   property color cAccent: "#509475"
@@ -36,7 +36,7 @@ ShellRoot {
   property color cRed: "#FF5345"
 
   // Palette from the active Omarchy theme, watched so a theme switch
-  // repaints a live overlay without a restart (same as notif.qml).
+  // repaints a live window without a restart (same as notif.qml).
   FileView {
     id: colors
     path: Quickshell.env("HOME") + "/.local/state/omarchy/current/theme/colors.toml"
@@ -48,7 +48,7 @@ ShellRoot {
         var m = new RegExp("^\\s*" + key + "\\s*=\\s*\"([^\"]+)\"", "m").exec(text)
         return m ? m[1] : fallback
       }
-      root.cBg = "#f2" + pick("dark_background", "#111c18").replace("#", "")
+      root.cBg = "#ff" + pick("dark_background", "#111c18").replace("#", "")
       root.cText = pick("bright_foreground", "#F7E8B2")
       root.cMuted = pick("muted", "#53685B")
       root.cAccent = pick("accent", "#509475")

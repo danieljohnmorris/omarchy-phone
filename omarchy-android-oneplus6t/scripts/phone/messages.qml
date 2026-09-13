@@ -35,7 +35,7 @@ ShellRoot {
 
   // Pre-load fallbacks only; every colour below is replaced from the active
   // Omarchy theme in the FileView. QML hex is #AARRGGBB — alpha first.
-  property color cBg: "#f2111c18"
+  property color cBg: "#ff111c18"
   property color cText: "#F7E8B2"
   property color cMuted: "#53685B"
   property color cAccent: "#509475"
@@ -56,7 +56,7 @@ ShellRoot {
         var m = new RegExp("^\\s*" + key + "\\s*=\\s*\"([^\"]+)\"", "m").exec(text)
         return m ? m[1] : fallback
       }
-      root.cBg = "#f2" + pick("dark_background", "#111c18").replace("#", "")
+      root.cBg = "#ff" + pick("dark_background", "#111c18").replace("#", "")
       root.cText = pick("bright_foreground", "#F7E8B2")
       root.cMuted = pick("muted", "#53685B")
       root.cAccent = pick("accent", "#509475")
@@ -119,23 +119,23 @@ ShellRoot {
   function openThread(number) {
     root.thread = number
     root.screen = "thread"
-    root.draft = ""
+    bodyInput.clear()
     root.lastError = ""
   }
 
   function compose() {
     root.screen = "new"
     root.thread = ""
-    root.toField = ""
-    root.draft = ""
+    toInput.clear()
+    bodyInput.clear()
     root.lastError = ""
   }
 
   function back() {
     root.screen = "list"
     root.thread = ""
-    root.draft = ""
-    root.toField = ""
+    bodyInput.clear()
+    toInput.clear()
     root.lastError = ""
     store.reload()
   }
@@ -175,7 +175,7 @@ ShellRoot {
     var number = root.target
     if (!number || !root.draft) return
     root.run("fajita-sms send " + root.sq(number) + " " + root.sq(root.draft))
-    root.draft = ""
+    bodyInput.clear()
     // Sending from the new-message screen drops you into that conversation.
     root.thread = number
     root.screen = "thread"
@@ -308,11 +308,19 @@ ShellRoot {
         }
 
         // Screen 1: thread list
-        ColumnLayout {
+        Flickable {
           visible: root.screen === "list"
           Layout.fillWidth: true
           Layout.fillHeight: true
-          spacing: 6
+          clip: true
+          contentWidth: width
+          contentHeight: listCol.implicitHeight
+          boundsBehavior: Flickable.StopAtBounds
+
+          ColumnLayout {
+            id: listCol
+            width: parent.width
+            spacing: 6
 
           Repeater {
             model: root.threads()
@@ -368,31 +376,38 @@ ShellRoot {
             }
           }
 
-          // Empty state sits with the (absent) rows, not pinned to the floor.
-          Text {
-            visible: root.messages.length === 0
-            text: "no messages"
-            color: root.cMuted
-            font.family: "JetBrainsMono Nerd Font"
-            font.pixelSize: 14
-            Layout.alignment: Qt.AlignHCenter
-            Layout.topMargin: 24
+            // Empty state sits with the (absent) rows, not pinned to the floor.
+            Text {
+              visible: root.messages.length === 0
+              text: "no messages"
+              color: root.cMuted
+              font.family: "JetBrainsMono Nerd Font"
+              font.pixelSize: 14
+              Layout.alignment: Qt.AlignHCenter
+              Layout.topMargin: 24
+            }
           }
-
-          Item { Layout.fillHeight: true; Layout.fillWidth: true }
         }
 
         // Screens 2 and 3 share the conversation view: an open thread, or the
         // history with whoever a new message is being addressed to.
-        ColumnLayout {
+        Flickable {
+          id: convFlick
           visible: root.screen !== "list"
           Layout.fillWidth: true
           Layout.fillHeight: true
           clip: true
-          spacing: 6
+          contentWidth: width
+          contentHeight: convCol.implicitHeight
+          boundsBehavior: Flickable.StopAtBounds
+          // The newest message is the one that matters: stay on the floor as
+          // the thread grows, instead of stranding the user at the top.
+          onContentHeightChanged: contentY = Math.max(0, contentHeight - height)
 
-          // Bubbles hug the bottom of whatever height the tile leaves us.
-          Item { Layout.fillHeight: true; Layout.preferredHeight: 1 }
+          ColumnLayout {
+            id: convCol
+            width: parent.width
+            spacing: 6
 
           Text {
             visible: root.conversation().length === 0
@@ -415,10 +430,13 @@ ShellRoot {
 
               Item { Layout.fillWidth: msgRow.modelData.dir === "out"; Layout.preferredWidth: 1 }
 
+              // A layout decides this item's geometry, so the bubble must
+              // publish implicit sizes: a plain `height` is overridden and the
+              // rows collapse into each other with the text spilling out.
               Rectangle {
                 Layout.maximumWidth: col.width * 0.78
-                Layout.preferredWidth: Math.min(bubble.implicitWidth + 20, col.width * 0.78)
-                height: bubble.implicitHeight + stampText.implicitHeight + 18
+                implicitWidth: Math.min(bubble.implicitWidth + 20, col.width * 0.78)
+                implicitHeight: bubble.implicitHeight + stampText.implicitHeight + 18
                 radius: 8
                 color: msgRow.modelData.dir === "out" ? root.cAccent : root.cRow
 
@@ -445,6 +463,7 @@ ShellRoot {
 
               Item { Layout.fillWidth: msgRow.modelData.dir === "in"; Layout.preferredWidth: 1 }
             }
+          }
           }
         }
 
@@ -473,7 +492,8 @@ ShellRoot {
           TextInput {
             id: toInput
             anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 10 }
-            text: root.toField
+            // The input owns its text: binding `text:` to a property would be
+            // destroyed by the first keystroke, and clear() would stop working.
             onTextChanged: root.toField = text
             color: root.cText
             font.family: "JetBrainsMono Nerd Font"
@@ -514,7 +534,6 @@ ShellRoot {
             TextInput {
               id: bodyInput
               anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 10 }
-              text: root.draft
               onTextChanged: root.draft = text
               color: root.cText
               font.family: "JetBrainsMono Nerd Font"

@@ -529,10 +529,13 @@ Working: boots unattended into the Omarchy session, bar, menu (touch), on-screen
 keyboard, terminal, theme, GPU acceleration, audio, Wi-Fi, USB networking, ssh,
 screenshots (`scripts/shot.sh`), lock screen (swipe-up, cosmetic), and cellular
 data: SIM provisioning, LTE registration, a working connection on the `three`
-NM profile, and a bar widget with a panel, Data toggle and Reconnect. Calls and
-Messages apps are installed and driven end to end (dial, hangup, compose, SMS
-ingest into the history store, call-audio routing), tiling 50/50 like any other
-window.
+NM profile, and a bar widget with a panel, Data toggle and Reconnect. The Calls
+and Messages apps are installed and tile 50/50 like any other window; verified
+on device: dialing creates and starts a call object, hangup clears it in both
+the live and never-connected cases, the store drives the conversation UI, and
+flipping to the UCM "Voice Call" profile exposes the earpiece sink and call
+mic. Never observed on device: an inbound SMS (nothing can reach this SIM) and
+audio through a connected call.
 
 Not working: calls and SMS *over the air* on this SIM — Three UK is VoLTE-only
 and there is no IMS stack on mainline sdm845, so the network refuses the CS

@@ -54,13 +54,13 @@
   // can raise itself over a focused text field. ipc-first, spawn as fallback
   // — the same shape apply-shell-patches.sh uses for the notification centre.
   "system.calls": {
-    "icon": "⟦Uf03a0⟧",
+    "icon": "󰎠",
     "label": "Calls",
     "description": "Dialer and live calls",
     "action": "quickshell -p $HOME/.config/fajita/calls.qml ipc call fajita-calls show 2>/dev/null || quickshell -p $HOME/.config/fajita/calls.qml"
   },
   "system.messages": {
-    "icon": "⟦Uf0361⟧",
+    "icon": "󰍡",
     "label": "Messages",
     "description": "SMS conversations",
     "action": "quickshell -p $HOME/.config/fajita/messages.qml ipc call fajita-messages show 2>/dev/null || quickshell -p $HOME/.config/fajita/messages.qml"
