@@ -7,7 +7,7 @@ sudo cp -n "$P" "$P.orig" 2>/dev/null || true
 sudo python3 - "$P" <<'PY'
 import sys
 p=sys.argv[1]; s=open(p).read()
-if "Qt.inputMethod && Qt.inputMethod.visible" in s:
+if "Qt.inputMethod && Qt.inputMethod.visible" in s or "fajitaOskUp" in s:
     print("already patched"); sys.exit(0)
 old="""  mask: Region {
     width: root.screenW
