@@ -462,6 +462,9 @@ Panel {
 
           Button {
             width: (parent.width - Style.space(8)) / 2
+            // Shaded while data is up: Button paints `active` with the
+            // selected fill, the at-a-glance "this is enabled" state.
+            active: root.sampled && root.dataState === "up"
             text: "Data: " + (root.sampled ? (root.dataState === "up" ? "on" : "off") : "…")
             onClicked: {
               root.bar.run("fajita-cell-toggle")
