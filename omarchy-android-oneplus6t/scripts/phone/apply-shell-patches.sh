@@ -252,7 +252,9 @@ PROBE = """  // Phone port: squeekboard is raised over DBus, which never sets
     stdout: SplitParser { onRead: line => OWNER.fajitaOskUp = line.indexOf("true") >= 0 }
   }
   Timer {
-    interval: 400; repeat: true; running: true; triggeredOnStart: true
+    // Only while the surface is actually up: a permanent 400ms busctl spawn
+    // would burn battery for a property nothing reads the rest of the time.
+    interval: 400; repeat: true; running: OWNER_LIVE; triggeredOnStart: true
     onTriggered: fajitaOskProbe.running = true
   }
 """
@@ -265,7 +267,7 @@ else:
     assert "Qt.inputMethod && Qt.inputMethod.visible" in s, "run section 1 first"
     if "import Quickshell.Io" not in s:
         s = s.replace("import Quickshell\n", "import Quickshell\nimport Quickshell.Io\n", 1)
-    s = s.replace("  mask: Region {", PROBE.replace("OWNER", "root") + "\n  mask: Region {", 1)
+    s = s.replace("  mask: Region {", PROBE.replace("OWNER_LIVE", "root.open").replace("OWNER", "root") + "\n  mask: Region {", 1)
     s = s.replace("(Qt.inputMethod && Qt.inputMethod.visible) ? root.screenH - 315 : root.screenH",
                   "root.fajitaOskUp ? root.screenH - 315 : root.screenH")
     s = s.replace("(Qt.inputMethod && Qt.inputMethod.visible) ? 315 : 0", "root.fajitaOskUp ? 315 : 0")
@@ -282,7 +284,7 @@ else:
     s = s.replace(old, "        if (panel.fajitaOskUp && fajitaTap.point.position.y > fajitaTap.parent.height - 315) return\n", 1)
     tail = "    } // fajita-menu-tap2\n"
     assert tail in s
-    body = "\n".join("  " + l if l.strip() else l for l in PROBE.replace("OWNER", "panel").split("\n"))
+    body = "\n".join("  " + l if l.strip() else l for l in PROBE.replace("OWNER_LIVE", "panel.visible").replace("OWNER", "panel").split("\n"))
     s = s.replace(tail, tail + body, 1)
     open(m, "w").write(s)
     print("patched menu osk gate")
