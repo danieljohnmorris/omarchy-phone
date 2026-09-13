@@ -501,11 +501,24 @@ reports `CS: 'detached'`, `PS: 'attached'`, and `--nas-get-system-info` says
 LTE `Voice support: 'no'`, `IMS voice support: 'yes'`. There is no
 circuit-switched domain to fall back to, and mainline sdm845 has no IMS stack,
 so an outgoing call goes `dialing -> terminated` after ~25s and an SMS submit
-ends in `Timeout was reached` with the object never leaving state `--`.
-Forcing a CS-capable RAT is refused by the plugin (`Unsupported: The given
-combination of allowed and preferred modes is not supported`). A SIM on an
-operator that still runs 2G/3G CS fallback is the only way to test the path
-end to end; everything above it is in place and waiting.
+ends in `Timeout was reached` with the object never leaving state `--`; the
+ModemManager journal names the modem's own refusal, `QMI protocol error (56):
+'WmsMessageDeliveryFailure'`. Forcing a CS-capable RAT is refused by the plugin
+(`Unsupported: The given combination of allowed and preferred modes is not
+supported`).
+
+Inbound is the same story, and it was tested with a real handset: two SMS sent
+to this SIM's own number (`mmcli -m any -K | grep own-numbers` →
+`447700900456`, matching `qmicli --dms-get-msisdn`) as carrier SMS, not
+iMessage. Over five minutes of watching, the modem exported no SMS object and
+`org.freedesktop.ModemManager1.Modem.Messaging` emitted no `Added` signal, so
+nothing ever reached userspace to ingest. MT SMS on this operator rides IMS
+too. A SIM on an operator that still runs 2G/3G CS fallback is the only way to
+test either path end to end; everything above it is in place and waiting.
+
+Beware one iMessage trap when testing: an iPhone addressing this number may
+send blue (iMessage over IP, never touching the modem). The bubble must be
+green and labelled `Text Message • SMS` for the test to mean anything.
 
 Two cheaper explanations were ruled out before settling on this, both worth
 knowing because they produce the same 25s `Timeout was reached`:
@@ -561,8 +574,10 @@ and Messages apps are installed and tile 50/50 like any other window; verified
 on device: dialing creates and starts a call object, hangup clears it in both
 the live and never-connected cases, the store drives the conversation UI, and
 flipping to the UCM "Voice Call" profile exposes the earpiece sink and call
-mic. Never observed on device: an inbound SMS (nothing can reach this SIM) and
-audio through a connected call.
+mic. Inbound SMS was tested with a second handset and never arrives: the modem
+exports no object and MM emits no `Messaging.Added` signal, so the ingest path
+has only been exercised against a stubbed `received` object. Also never
+observed: audio through a connected call.
 
 Not working: calls and SMS *over the air* on this SIM — Three UK is VoLTE-only
 and there is no IMS stack on mainline sdm845, so the network refuses the CS
