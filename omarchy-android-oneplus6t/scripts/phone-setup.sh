@@ -190,4 +190,31 @@ scp -q "$HERE/phone/fajita-reboot-bootloader" $PH:.local/bin/
 ssh $PH 'mkdir -p ~/.config/omarchy/extensions; chmod +x ~/.local/bin/fajita-reboot-bootloader'
 scp -q "$HERE/phone/omarchy-menu.jsonc" $PH:.config/omarchy/extensions/omarchy-menu.jsonc
 
+echo "== voice calls + SMS: q6voiced (call audio), helpers, apps, watcher"
+# q6voiced is upstream postmarketOS C (MIT); build-q6voiced.sh cross-builds it
+# in a debian:bookworm arm64 container. Committed under phone/ so a setup run
+# needs no Docker, same as the screensaver binary.
+if [ ! -x "$HERE/phone/q6voiced" ]; then
+  "$HERE/build-q6voiced.sh"
+  install -m755 "$HERE/../build/q6voiced/q6voiced" "$HERE/phone/q6voiced"
+fi
+scp -q "$HERE/phone/q6voiced" "$HERE/phone/q6voiced.service" $PH:/tmp/
+ssh $PH 'sudo install -m755 -o root -g root /tmp/q6voiced /usr/local/bin/q6voiced
+  sudo install -m644 -o root -g root /tmp/q6voiced.service /etc/systemd/system/q6voiced.service
+  sudo systemctl daemon-reload; sudo systemctl enable --now q6voiced.service'
+
+# Call/SMS control from a seatless caller (ssh, systemd --user) needs polkit:
+# without this every mmcli voice/messaging op fails Unauthorized.
+scp -q "$HERE/phone/51-fajita-modem.rules" $PH:/tmp/
+ssh $PH 'sudo install -m644 -o root -g root /tmp/51-fajita-modem.rules /etc/polkit-1/rules.d/51-fajita-modem.rules
+  sudo systemctl restart polkit'
+
+scp -q "$HERE/phone/fajita-call" "$HERE/phone/fajita-sms" "$HERE/phone/fajita-call-watch" $PH:.local/bin/
+scp -q "$HERE/phone/calls.qml" "$HERE/phone/messages.qml" $PH:.config/fajita/
+scp -q "$HERE/phone/fajita-call-watch.service" $PH:.config/systemd/user/
+ssh $PH 'chmod +x ~/.local/bin/fajita-call ~/.local/bin/fajita-sms ~/.local/bin/fajita-call-watch
+  mkdir -p ~/.local/state/fajita
+  systemctl --user daemon-reload
+  systemctl --user enable --now fajita-call-watch.service'
+
 echo "phone setup done"

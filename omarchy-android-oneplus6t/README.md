@@ -447,6 +447,58 @@ rediscover the hard way:
   process spawner get `Not authorized to control networking`, so anything the
   shell runs (the Data toggle, Reconnect) must go through `sudo -n nmcli`.
 
+### Calls and SMS
+
+Two standalone Quickshell apps under `~/.config/fajita`, launched from the
+power-key menu ("Calls", "Messages") or by the watcher on an event:
+
+- `calls.qml` — dialer (keypad) when idle, live call screen (accept/hangup,
+  duration) while ModemManager has a call. Talks to `fajita-call`.
+- `messages.qml` — thread list, conversation, new message. Talks to
+  `fajita-sms`; history is `~/.local/state/fajita/messages.jsonl` (one JSON
+  object per line, the helper is the only writer).
+- Both are plain xdg-toplevel windows, not layer-shell overlays, so they tile
+  like any other app (two open = 50/50) and text fields raise squeekboard.
+  An in-app key grid would double up with the OSK; don't add one back.
+- `fajita-call-watch.service` (user) flips the card profile `HiFi` <-> `Voice
+  Call` while a call is audio-bearing, raises the right app, and notifies on
+  incoming calls/SMS. `q6voiced.service` (system, upstream postmarketOS C,
+  built by `build-q6voiced.sh`) opens the hostless `VoiceMMode1` PCM
+  (`hw:0,6`) on MM call signals; the UCM "Voice Call" verb does the backend
+  routing (earpiece + bottom mic). Verified: flipping the profile exposes
+  `Voice_Call__Earpiece__sink` and `Voice_Call__Mic__source`.
+- `51-fajita-modem.rules` lets seatless callers (ssh, user units) run MM
+  voice/messaging ops; without it every control call returns `Unauthorized`.
+
+mmcli contract, verified against the pinned MM tree (`d776ea38`), because
+guessing it wastes an afternoon:
+
+- `--voice-create-call` only *creates* the object; dialing needs a second
+  `mmcli -o PATH --start`. Per-call ops (`--start/--accept/--hangup`) are
+  call-object actions, not modem options.
+- `--messaging-create-sms` prints the path in its table form
+  (`Messaging | created sms: /org/...`), and sending is an SMS-object action
+  (`mmcli -s PATH --send`), not `-m ... --messaging-send-sms`.
+- `-K` output pads keys (`call.properties.state        : active`), so any
+  parser must trim before comparing. A key-equality match on the padded field
+  silently yields empty state for every call.
+- Terminated calls stay exported until deleted, and `--hangup` on a call that
+  never connected fails with "This call was not active": `fajita-call hangup`
+  falls back to `--voice-delete-call`, and `list` reaps only an explicit
+  `terminated` (a freshly created call legitimately reports `--`).
+
+**Calls and SMS do not work on this SIM, and no userspace change here can fix
+it.** Three UK (MCC 234 / MNC 20) is VoLTE-only: `qmicli --nas-get-serving-system`
+reports `CS: 'detached'`, `PS: 'attached'`, and `--nas-get-system-info` says
+LTE `Voice support: 'no'`, `IMS voice support: 'yes'`. There is no
+circuit-switched domain to fall back to, and mainline sdm845 has no IMS stack,
+so an outgoing call goes `dialing -> terminated` after ~25s and an SMS submit
+ends in `Timeout was reached` with the object never leaving state `--`.
+Forcing a CS-capable RAT is refused by the plugin (`Unsupported: The given
+combination of allowed and preferred modes is not supported`). A SIM on an
+operator that still runs 2G/3G CS fallback is the only way to test the path
+end to end; everything above it is in place and waiting.
+
 ## Upgrading Omarchy
 
 `omarchy-update` cannot run here: it uses the `[omarchy]` pacman repo, which
@@ -477,10 +529,15 @@ Working: boots unattended into the Omarchy session, bar, menu (touch), on-screen
 keyboard, terminal, theme, GPU acceleration, audio, Wi-Fi, USB networking, ssh,
 screenshots (`scripts/shot.sh`), lock screen (swipe-up, cosmetic), and cellular
 data: SIM provisioning, LTE registration, a working connection on the `three`
-NM profile, and a bar widget with a panel, Data toggle and Reconnect.
+NM profile, and a bar widget with a panel, Data toggle and Reconnect. Calls and
+Messages apps are installed and driven end to end (dial, hangup, compose, SMS
+ingest into the history store, call-audio routing), tiling 50/50 like any other
+window.
 
-Not working: calls, SMS, Bluetooth (firmware loads, HCI reset times out).
-I haven't tried the camera or sensors.
+Not working: calls and SMS *over the air* on this SIM — Three UK is VoLTE-only
+and there is no IMS stack on mainline sdm845, so the network refuses the CS
+dial and the SMS submit (see "Calls and SMS"). Bluetooth (firmware loads, HCI
+reset times out). I haven't tried the camera or sensors.
 
 Tested only on a OnePlus 6T (fajita) with Omarchy 4.0.2 and Hyprland 0.56.2.
 The OnePlus 6 (enchilada) shares the SoC and should need only a DTB change.

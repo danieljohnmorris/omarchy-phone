@@ -49,6 +49,22 @@
     "description": "Wallpaper previews, tap to apply",
     "action": "theme=$(omarchy-theme-switcher); [[ -n $theme ]] && omarchy-theme-set \"$theme\""
   },
+  // Calls and Messages: standalone Quickshell apps under ~/.config/fajita,
+  // launched as normal windows so they tile (two open = 50/50) and the OSK
+  // can raise itself over a focused text field. ipc-first, spawn as fallback
+  // — the same shape apply-shell-patches.sh uses for the notification centre.
+  "system.calls": {
+    "icon": "⟦Uf03a0⟧",
+    "label": "Calls",
+    "description": "Dialer and live calls",
+    "action": "quickshell -p $HOME/.config/fajita/calls.qml ipc call fajita-calls show 2>/dev/null || quickshell -p $HOME/.config/fajita/calls.qml"
+  },
+  "system.messages": {
+    "icon": "⟦Uf0361⟧",
+    "label": "Messages",
+    "description": "SMS conversations",
+    "action": "quickshell -p $HOME/.config/fajita/messages.qml ipc call fajita-messages show 2>/dev/null || quickshell -p $HOME/.config/fajita/messages.qml"
+  },
   "system.bootloader": {
     "icon": "󰚥",
     "label": "Reboot to bootloader",

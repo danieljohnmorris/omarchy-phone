@@ -55,6 +55,11 @@ phone/notif.qml:.config/fajita/notif.qml
 phone/quicksettings.qml:.config/fajita/quicksettings.qml
 phone/lock.qml:.config/fajita/lock.qml
 phone/calls.qml:.config/fajita/calls.qml
+phone/messages.qml:.config/fajita/messages.qml
+phone/fajita-call:.local/bin/fajita-call
+phone/fajita-sms:.local/bin/fajita-sms
+phone/fajita-call-watch:.local/bin/fajita-call-watch
+phone/fajita-call-watch.service:.config/systemd/user/fajita-call-watch.service
 phone/fajita-lock-screen:.local/bin/fajita-lock-screen
 phone/plugins/fajita.cellular/manifest.json:.config/omarchy/plugins/fajita.cellular/manifest.json
 phone/plugins/fajita.cellular/BarWidget.qml:.config/omarchy/plugins/fajita.cellular/BarWidget.qml
@@ -104,7 +109,7 @@ while IFS=: read -r repo remote; do
 done <<< "$MAP"
 
 # root-owned files, fetched separately
-for pair in "phone/ttfx-aarch64:/usr/local/bin/ttfx" "phone/gum:/usr/local/bin/gum" "phone/omarchy-theme-switcher:/usr/local/bin/omarchy-theme-switcher" "phone/proxy.sh:/etc/profile.d/proxy.sh" "phone/50-fajita-power.rules:/etc/polkit-1/rules.d/50-fajita-power.rules"; do
+for pair in "phone/ttfx-aarch64:/usr/local/bin/ttfx" "phone/gum:/usr/local/bin/gum" "phone/omarchy-theme-switcher:/usr/local/bin/omarchy-theme-switcher" "phone/proxy.sh:/etc/profile.d/proxy.sh" "phone/50-fajita-power.rules:/etc/polkit-1/rules.d/50-fajita-power.rules" "phone/51-fajita-modem.rules:/etc/polkit-1/rules.d/51-fajita-modem.rules" "phone/q6voiced:/usr/local/bin/q6voiced" "phone/q6voiced.service:/etc/systemd/system/q6voiced.service"; do
   repo=${pair%%:*}; remote=${pair#*:}
   if ssh -o ConnectTimeout=8 "$PH" "sudo -n tar -cf - $remote 2>/dev/null" | tar -xf - -C "$tmp" 2>/dev/null && [ -f "$tmp$remote" ]; then
     if diff -q "$HERE/$repo" "$tmp$remote" >/dev/null 2>&1; then same=$((same+1)); else

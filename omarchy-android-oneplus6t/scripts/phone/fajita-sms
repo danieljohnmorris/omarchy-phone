@@ -23,12 +23,17 @@ mkdir -p "$(dirname "$STORE")"; touch "$STORE"
 # mmcli property strings are comma-separated; quoted values may contain
 # commas, but no quote character can survive the parser (unmatched quote),
 # so drop double quotes from user text.
+#
+# This mmcli prints the new object in its table form ("Messaging | created
+# sms: /org/..."), not as a "Successfully created" line, so match the path
+# itself. Sending is an SMS-object action (mmcli -s PATH --send); the modem
+# option group has no --messaging-send-sms.
 create_and_send() { # $1 number, $2 text
-  local path
-  path=$(mmcli -m "$MODEM" --messaging-create-sms="number=\"$1\",text=\"$2\"" |
-    sed -n 's/^Successfully created new SMS: //p')
-  [ -n "$path" ] || { echo "no SMS path from mmcli" >&2; return 1; }
-  mmcli -m "$MODEM" --messaging-send-sms="$path" >/dev/null
+  local path out
+  out=$(mmcli -m "$MODEM" --messaging-create-sms="number=\"$1\",text=\"$2\"" 2>&1)
+  path=$(grep -oE '/org/freedesktop/ModemManager1/SMS/[0-9]+' <<<"$out" | head -1)
+  [ -n "$path" ] || { echo "create failed: $out" >&2; return 1; }
+  mmcli -s "$path" --send >/dev/null || { echo "send failed: $path" >&2; return 1; }
   mmcli -m "$MODEM" --messaging-delete-sms="$path" >/dev/null 2>&1 || true
 }
 
@@ -52,7 +57,10 @@ ingest() { # $1 = /org/freedesktop/ModemManager1/SMS/N
   number=$(jq -r 'getpath(["sms.number"]) // getpath(["sms","number"]) // ""' <<<"$j")
   text=$(jq -r 'getpath(["sms.text"]) // getpath(["sms","text"]) // ""' <<<"$j")
   state=$(jq -r 'getpath(["sms.state"]) // getpath(["sms","state"]) // ""' <<<"$j")
-  [ "$state" = received ] || { mmcli -m "$MODEM" --messaging-delete-sms="$1" >/dev/null 2>&1 || true; return 0; }
+  # Only inbound messages are ours to consume. Never touch anything else:
+  # a sweep that deleted non-received objects would race `send` and destroy
+  # our own outgoing draft mid-submit (mmcli then reports a send timeout).
+  [ "$state" = received ] || return 0
   ts=$(jq -r 'getpath(["sms.timestamp"]) // getpath(["sms","timestamp"]) // ""' <<<"$j")
   ts=$(ts_to_epoch "${ts:-$(date +%Y%m%dT%H%M%S%z)}")
   # Dedupe on the full tuple: an Added signal and a sweep can race.
@@ -69,7 +77,9 @@ ingest() { # $1 = /org/freedesktop/ModemManager1/SMS/N
 case "${1:-}" in
   send)
     [ $# -eq 3 ] || { echo "usage: fajita-sms send NUMBER TEXT" >&2; exit 2; }
-    create_and_send "$2" "${3//\"/}"
+    # Record only what the network actually accepted: a failed submit that
+    # still landed in the store would show the user a message never sent.
+    create_and_send "$2" "${3//\"/}" || exit 1
     append out "$2" "${3//\"/}" "$(date +%s)"
     ;;
   ingest)

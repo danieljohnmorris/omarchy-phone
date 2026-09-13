@@ -368,15 +368,18 @@ ShellRoot {
             }
           }
 
-          Item { Layout.fillHeight: true; Layout.fillWidth: true }
-
+          // Empty state sits with the (absent) rows, not pinned to the floor.
           Text {
             visible: root.messages.length === 0
             text: "no messages"
             color: root.cMuted
             font.family: "JetBrainsMono Nerd Font"
             font.pixelSize: 14
+            Layout.alignment: Qt.AlignHCenter
+            Layout.topMargin: 24
           }
+
+          Item { Layout.fillHeight: true; Layout.fillWidth: true }
         }
 
         // Screens 2 and 3 share the conversation view: an open thread, or the

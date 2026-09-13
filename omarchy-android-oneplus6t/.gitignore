@@ -1,3 +1,4 @@
 work/
+build/
 *.img
 *.log

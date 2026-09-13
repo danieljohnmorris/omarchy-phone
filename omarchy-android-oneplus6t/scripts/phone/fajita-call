@@ -24,9 +24,19 @@ list_paths() {
     awk -F' : ' '$1 ~ /^modem\.voice\.call\.value\[/ {print $2}'
 }
 
-# Pull one "key : value" field out of `mmcli -o PATH -K` output.
-kv() { awk -F' : ' -v k="$1" '$1==k {print $2; exit}' <<<"$2"; }
+# Pull one "key : value" field out of `mmcli -o PATH -K` output. -K pads keys
+# to a fixed width ("call.properties.state        : active"), so the key must
+# be trimmed before comparing, and the value may itself contain " : ".
+kv() {
+  awk -v k="$1" '
+    { i = index($0, " : "); if (!i) next
+      key = substr($0, 1, i - 1); sub(/[ \t]+$/, "", key)
+      if (key == k) { print substr($0, i + 3); exit } }' <<<"$2"
+}
 
+# Terminated calls stay exported as objects until deleted. They are not
+# actionable, so they never belong in the UI's list: reap them here and the
+# dialer comes back by itself when the far end (or the network) ends a call.
 list() {
   local path info state direction number
   while IFS= read -r path; do
@@ -35,6 +45,13 @@ list() {
     state=$(kv call.properties.state "$info")
     direction=$(kv call.properties.direction "$info")
     number=$(kv call.properties.number "$info")
+    # Reap only an explicit `terminated`. A freshly created call reports
+    # `--` until --start runs, and list is polled every second, so treating
+    # empty as dead would delete the call being dialled.
+    if [ "$state" = terminated ]; then
+      mmcli -m "$MODEM" --voice-delete-call="$path" >/dev/null 2>&1 || true
+      continue
+    fi
     echo "$path|${state:--}|${direction:--}|${number:--}"
   done < <(list_paths)
 }
@@ -64,7 +81,13 @@ case "${1:-}" in
     ;;
   hangup)
     [ $# -eq 2 ] || { echo "usage: fajita-call hangup PATH" >&2; exit 2; }
-    mmcli -o "$2" --hangup >/dev/null
+    # A call that never connected (network refused, far end gone) is already
+    # inactive, and MM rejects --hangup on it ("This call was not active").
+    # The user's intent is "make this call go away", so fall through to
+    # deleting the object and only complain if that fails too.
+    mmcli -o "$2" --hangup >/dev/null 2>&1 ||
+      mmcli -m "$MODEM" --voice-delete-call="$2" >/dev/null ||
+      { echo "could not hang up or clear $2" >&2; exit 1; }
     ;;
   hangup-all)
     mmcli -m "$MODEM" --voice-hangup-all >/dev/null
