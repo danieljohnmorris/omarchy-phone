@@ -54,6 +54,7 @@ phone/plugins/fajita.close/BarWidget.qml:.config/omarchy/plugins/fajita.close/Ba
 phone/notif.qml:.config/fajita/notif.qml
 phone/quicksettings.qml:.config/fajita/quicksettings.qml
 phone/lock.qml:.config/fajita/lock.qml
+phone/calls.qml:.config/fajita/calls.qml
 phone/fajita-lock-screen:.local/bin/fajita-lock-screen
 phone/plugins/fajita.cellular/manifest.json:.config/omarchy/plugins/fajita.cellular/manifest.json
 phone/plugins/fajita.cellular/BarWidget.qml:.config/omarchy/plugins/fajita.cellular/BarWidget.qml

@@ -8,7 +8,11 @@
 # python-terminaltexteffects fallback is too slow at 120 fps on SDM845 and
 # wedges the session, which is why this build exists instead.
 #
-# How: Docker (any host; on Apple Silicon the arm64 container runs natively).
+# How: Docker. On an ARM host (Apple Silicon, an ARM Linux box) the arm64
+# container runs natively — that is the tested path. On an x86_64 host it
+# still works but needs qemu-user-static + binfmt registered
+# (`docker run --privileged --rm tonistiigi/binfmt --install arm64`), and the
+# emulated Rust build takes many minutes rather than ~20 seconds.
 # Debian bookworm + rustup (NOT Alpine/musl: its packaged rust cannot build
 # proc-macro crates like clap_derive; and NOT Debian's apt cargo: rustc 1.63
 # is below ttfx's MSRV). The glibc target (aarch64-unknown-linux-gnu) links

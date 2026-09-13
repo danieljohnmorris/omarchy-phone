@@ -99,7 +99,7 @@ ssh $PH 'mkdir -p ~/.config/fajita'
 scp -q "$HERE/phone/empty-hint.qml" $PH:.config/fajita/empty-hint.qml
 # Phone lock screen, notification center, quick settings: standalone Quickshell
 # surfaces under ~/.config/fajita for the same pacman-proof reason as the hint.
-scp -q "$HERE/phone/lock.qml" "$HERE/phone/notif.qml" "$HERE/phone/quicksettings.qml" $PH:.config/fajita/
+scp -q "$HERE/phone/lock.qml" "$HERE/phone/notif.qml" "$HERE/phone/quicksettings.qml" "$HERE/phone/calls.qml" $PH:.config/fajita/
 ssh $PH 'chmod +x ~/.local/bin/fajita-osk-toggle ~/.local/bin/fajita-osk-start ~/.local/bin/fajita-osk-fit ~/.local/bin/fajita-slot-ok ~/.local/bin/fajita-screen-off ~/.local/bin/fajita-power-key ~/.local/bin/fajita-cell-status ~/.local/bin/fajita-cell-toggle ~/.local/bin/fajita-cell-info ~/.local/bin/fajita-cell-reconnect ~/.local/bin/fajita-lock-screen
   # squeekboard must bind while a focused text client exists (Hyprland 0.56 IME relay quirk); the
   # service primes that with a throwaway terminal. Do NOT start it from Hyprland exec/autostart.lua.
