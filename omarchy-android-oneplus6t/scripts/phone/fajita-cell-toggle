@@ -1,9 +1,12 @@
 #!/bin/bash
 # Tap action for the cellular bar widget: toggle the data connection.
-if ip -4 addr show qmapmux0.0 2>/dev/null | grep -q inet; then
-  nmcli connection down three >/dev/null 2>&1 \
-    || sudo mmcli -m any 2>/dev/null | grep -oE '/org/freedesktop/ModemManager1/Bearer/[0-9]+' | \
-       xargs -r -n1 sudo mmcli -m any --delete-bearer >/dev/null 2>&1
+#
+# NetworkManager owns the qmapmux data path (gsm profile "three"). Raw mmcli
+# bearers come up TX-only on this modem (downlink never flows), so always go
+# through NM. sudo -n: polkit denies activation from session-less callers
+# (ssh, systemd-run shells), and the sudoers rule already covers nmcli.
+if nmcli -t -f GENERAL.STATE connection show three 2>/dev/null | grep -q activated; then
+  sudo -n nmcli connection down three
 else
-  nmcli connection up three
+  sudo -n nmcli connection up three
 fi
