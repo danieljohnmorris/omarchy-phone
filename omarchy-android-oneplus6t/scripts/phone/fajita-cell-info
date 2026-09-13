@@ -27,4 +27,6 @@ fi
 # fall back to qmicli DMS. mmcli --command needs --debug daemons, so no +CNUM.
 num=$(sed -n 's/.*own: *\(+\{0,1\}[0-9]\{7,15\}\).*/\1/p' <<<"$out" | head -1)
 [ -n "$num" ] || num=$(timeout 3 qmicli -pd qrtr://0 --dms-get-msisdn 2>/dev/null | sed -n "s/.*MSISDN: '\([+0-9]*\)'.*/\1/p")
+# Show international numbers with the +: both QMI paths return bare digits.
+[ -z "$num" ] || [[ $num == +* ]] || num="+$num"
 echo "${op:-}|$rat|${q:-0}|${st:-unknown}|$d|${ip:-}|${rx:-0}|${tx:-0}|${ping_ms:--}|${num:-}"
