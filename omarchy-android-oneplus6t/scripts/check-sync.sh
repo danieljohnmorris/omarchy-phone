@@ -22,7 +22,6 @@ phone/omarchy/shell.toml:.config/omarchy/shell.toml
 phone/plugins/fajita.keyboard/manifest.json:.config/omarchy/plugins/fajita.keyboard/manifest.json
 phone/plugins/fajita.keyboard/BarWidget.qml:.config/omarchy/plugins/fajita.keyboard/BarWidget.qml
 phone/waybar/config.jsonc:.config/waybar/config.jsonc
-phone/waybar/style.css:.config/waybar/style.css
 phone/squeekboard.service:.config/systemd/user/squeekboard.service
 phone/osk-fit.service:.config/systemd/user/osk-fit.service
 phone/waybar.service:.config/systemd/user/waybar.service

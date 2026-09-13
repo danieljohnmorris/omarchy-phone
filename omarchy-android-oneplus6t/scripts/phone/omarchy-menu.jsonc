@@ -9,16 +9,34 @@
     "when": "true",
     "action": "fajita-screen-off"
   },
-  // The bar used to carry a dedicated close (X) widget for this; it was
-  // dropped to declutter the icons, and the menu row is the touch close path
-  // (no titlebars, no gestures on this device). Dispatcher form is the
-  // Lua-fluent one — Hyprland evals dispatch args as Lua.
+  // Lock: the concept-shell lock screen (swipe up to unlock), not the session
+  // lock — no keyboard can render above ext-session-lock, so the password
+  // flow is unusable on touch. See README "Lock screen".
+  "system.lock": {
+    "icon": "󰌾",
+    "label": "Lock",
+    "description": "Lock screen, swipe up to unlock",
+    "action": "$HOME/.local/bin/fajita-lock-screen"
+  },
+
+  // Closing apps on touch: no titlebar buttons and hyprgrass is unavailable,
+  // so the menu (reachable from the power key or top-left) is the close path.
+  // Tap the app to focus it, then this row. Dispatcher form is the Lua-fluent
+  // one — this Hyprland evals dispatch args as Lua (see flipsplit above).
   "system.closeapp": {
     "icon": "󰅖",
     "label": "Close app",
     "description": "Close the focused window",
     "when": "true",
     "action": "hyprctl dispatch 'hl.dsp.window.close()'"
+  },
+
+  "system.flipsplit": {
+    "icon": "⇄",
+    "label": "Flip split",
+    "description": "Swap the two tiled halves",
+    "when": "true",
+    "action": "hyprctl dispatch 'hl.dsp.layout(\"swapsplit\")'"
   },
   // Shutdown is hidden: a clean poweroff cannot be undone from the phone.
   // The power button will not cold-start it afterwards (OPH-16), so the row

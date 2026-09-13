@@ -32,6 +32,10 @@ Panel {
   property real rxBytes: 0
   property real txBytes: 0
   property string pingMs: "-"
+  // False until the first fajita-cell-info line parses. Before that the
+  // defaults above are guesses; showing "No operator" / "Data: off" for the
+  // ~1s script window reads as an outage, so the UI shows "…" instead.
+  property bool sampled: false
 
   // Rates (bytes/s) and the graph history (last GRAPH_POINTS samples).
   property real rxRate: 0
@@ -159,6 +163,7 @@ Panel {
       onRead: line => {
         var f = line.trim().split("|")
         if (f.length < 9) return
+        root.sampled = true
         root.operatorName = f[0]
         root.rat = f[1]
         root.quality = parseInt(f[2]) || 0
@@ -250,7 +255,7 @@ Panel {
 
             Text {
               anchors.right: parent.right
-              text: root.operatorName || "No operator"
+              text: root.sampled ? (root.operatorName || "No operator") : "…"
               color: root.fg
               font.family: root.fontFamily
               font.pixelSize: Style.font.body
@@ -281,7 +286,7 @@ Panel {
           }
           Text {
             anchors.right: parent.right
-            text: root.modemState || "unknown"
+            text: root.sampled ? (root.modemState || "unknown") : "…"
             color: root.fg
             font.family: root.fontFamily
             font.pixelSize: Style.font.bodySmall
@@ -457,7 +462,7 @@ Panel {
 
           Button {
             width: (parent.width - Style.space(8)) / 2
-            text: "Data: " + (root.dataState === "up" ? "on" : "off")
+            text: "Data: " + (root.sampled ? (root.dataState === "up" ? "on" : "off") : "…")
             onClicked: {
               root.bar.run("fajita-cell-toggle")
               settle.restart()

@@ -136,9 +136,8 @@ BarWidget {
       // Handler on the button itself: something in the WidgetButton stack
       // consumes presses inside the declared box above the sibling overlay,
       // so the overlay alone leaves the glyph area dead. Both paths toggle;
-      // whichever layer wins, the click works. Log disambiguates in qs log.
+      // whichever layer wins, the click works.
       onPressed: function(b) {
-        console.log("[fajita-cellular] button pressed", b)
         if (b === Qt.RightButton)
           root.bar.run("fajita-cell-toggle");
         else
@@ -165,7 +164,6 @@ BarWidget {
       anchors.fill: row
       acceptedButtons: Qt.LeftButton | Qt.RightButton
       onClicked: function(mouse) {
-        console.log("[fajita-cellular] overlay click", mouse.x, mouse.y, mouse.button)
         if (mouse.button === Qt.RightButton)
           root.bar.run("fajita-cell-toggle");
         else

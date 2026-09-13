@@ -39,6 +39,7 @@ echo "== user provisioning + phone overrides"
 scp -q "$HERE/phone/monitors.lua" "$HERE/phone/input.lua" "$HERE/phone/autostart.lua" "$HERE/phone/looknfeel.lua" "$HERE/phone/bindings.lua" $PH:/tmp/
 scp -q "$HERE/phone/bash_profile" $PH:/tmp/bash_profile
 scp -q "$HERE/phone/hooks/post-boot" $PH:/tmp/post-boot
+scp -q "$HERE/phone/hooks/theme-set.d/fajita-theme-rows" $PH:/tmp/fajita-theme-rows
 ssh $PH 'cp -rn /etc/skel/. ~/; cp /etc/skel/.bashrc ~/.bashrc
   source /etc/profile.d/omarchy.sh; source /etc/profile.d/proxy.sh
   OMARCHY_SETUP_CONTEXT=provision omarchy-provision-user --force || true
@@ -61,6 +62,7 @@ ssh $PH 'cp -rn /etc/skel/. ~/; cp /etc/skel/.bashrc ~/.bashrc
   # mise-based migrations (Hermes, Cursor, Muse wrappers) skip themselves.
   touch ~/.local/state/omarchy/migrations/1787215483.sh ~/.local/state/omarchy/preinstalls-removed
   install -m755 /tmp/post-boot ~/.config/omarchy/hooks/post-boot
+  install -Dm755 /tmp/fajita-theme-rows ~/.config/omarchy/hooks/theme-set.d/fajita-theme-rows
   sudo systemctl enable sshd'
 
 echo "== keyboard toggle bar widget (squeekboard auto-show is unreliable on Hyprland)"
@@ -140,7 +142,7 @@ ssh $PH 'sudo install -m755 /tmp/ttfx /usr/local/bin/ttfx'
 
 echo "== second bar row: clock under Omarchy's bar (the notch blocks the centre of row one)"
 ssh $PH 'mkdir -p ~/.config/waybar ~/.config/systemd/user ~/.local/bin'
-scp -q "$HERE/phone/waybar/config.jsonc" "$HERE/phone/waybar/style.css" $PH:.config/waybar/
+scp -q "$HERE/phone/waybar/config.jsonc" $PH:.config/waybar/
 scp -q "$HERE/phone/fajita-second-bar" $PH:.local/bin/
 scp -q "$HERE/phone/waybar.service" $PH:.config/systemd/user/
 ssh $PH 'chmod +x ~/.local/bin/fajita-second-bar
