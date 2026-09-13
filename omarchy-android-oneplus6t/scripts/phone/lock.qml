@@ -41,9 +41,18 @@ ShellRoot {
   Process {
     id: scan
     command: ["bash", "-lc",
-      "ls -1t ~/.local/state/omarchy/notifications/history 2>/dev/null | head -3 | while read -r f; do " +
+      // Only notifications from this boot: history files resurface forever
+      // otherwise. mtime-vs-now is garbage on an RTC-less phone (clock at
+      // 1970 until NTP, so the sign flips); compare against btime instead,
+      // and skip the filter entirely while the year is still 1970.
+      "H=~/.local/state/omarchy/notifications/history; " +
+      "BT=$(awk '/btime/{print $2}' /proc/stat); " +
+      "cd $H 2>/dev/null || exit 0; " +
+      "if [ $(date +%Y) = 1970 ]; then LIST=$(ls -1t | head -6); " +
+      "else LIST=$(find . -maxdepth 1 -type f -newermt @$BT -printf '%T@ %f\\n' 2>/dev/null | sort -rn | head -3 | cut -d' ' -f2-); fi; " +
+      "for f in $LIST; do " +
       "python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print((d.get(\"summary\") or d.get(\"body\") or \"\")[:60])' " +
-      "\"$HOME/.local/state/omarchy/notifications/history/$f\" 2>/dev/null; done"]
+      "\"$H/$f\" 2>/dev/null; done"]
     stdout: SplitParser {
       onRead: data => root.entries = root.entries.concat([data])
     }
