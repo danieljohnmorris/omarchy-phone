@@ -188,11 +188,12 @@ what doesn't is at the bottom.
   Link-local addresses do drop on every gadget re-enumeration: a command that
   returns "No route to host" or exits 255 with no output usually needs nothing
   but a retry after re-reading `ndp -an`.
-- **`scp` does not work: the phone runs no sftp subsystem.** It fails with
-  `scp: Connection closed`, which reads like a network fault. Pipe through ssh
-  instead — `ssh $PH 'cat > dest' < src` — and `ssh $PH 'sudo install -m755
-  /tmp/f /usr/local/bin/f'` for root-owned targets. `phone-setup.sh` still uses
-  `scp` where it works; prefer the pipe for anything new.
+- **Transfer files with the ssh pipe, not `scp`.** The sftp subsystem has come
+  and gone across rootfs rebuilds — when it is missing, scp fails with
+  `scp: Connection closed`, which reads like a network fault. `ssh $PH
+  'cat > dest' < src` works with or without sftp, and over the link-local v6
+  target that scp's client-side parsing also chokes on. `ssh $PH 'sudo install
+  -m755 /tmp/f /usr/local/bin/f'` for root-owned targets.
 - **The phone's user is uid 1001, not 1000.** `hyprctl` against
   `/run/user/1000` returns empty lists rather than an error, so it looks like
   the compositor has zero keyboards and zero binds. That fabricated the original
@@ -215,6 +216,15 @@ what doesn't is at the bottom.
 - Key combos: fastboot = from off with cable OUT, Power+VolUp+VolDown, release
   Power at the vibrate, keep the volumes until "FastBoot Mode". Both volumes
   with the cable IN = EDL (9008). Exit EDL: unplug, VolUp+Power 20 s.
+- Hard crashes land in EDL with no readable trace: ramoops IS wired up
+  (4 MiB reserved at 0xac300000, CONFIG_PSTORE_RAM=y, pstore mounted) but every
+  zone header fails at boot — `ramoops: uncorrectable error in header` — so
+  `/sys/fs/pstore/` is always empty after a crash. Suspects: the EDL/crashdump
+  programmers scribbling the reserved region, or a full power loss not
+  preserving it. Three same-day EDL drops remain undiagnosable; capture needs
+  fixing the header corruption (dump the raw region over ssh immediately after
+  a *soft* reboot that follows a panic) or a serial console. Also cap
+  `-j`/CPUQuota on long on-device builds — the load spikes before each drop.
 - Once Linux runs, the boot partition can be rewritten over ssh with
   `dd if=boot.img of=/dev/disk/by-partlabel/boot_b`, so the button combination
   is only needed for the first flash.
@@ -265,8 +275,8 @@ the variables in your shell. Defaults: user `dan`, phone at `172.16.42.1`.
   `ssh $PHONE_USER@fe80::...%en16` using the non-`permanent` address from
   `ndp -an` — no address assignment and no sudo on the host. See the notes
   above.
-- Copy files with `ssh $PH 'cat > dest' < src`, not `scp`: the phone runs no
-  sftp subsystem.
+- Copy files with `ssh $PH 'cat > dest' < src`, not `scp`: the ssh pipe works
+  whether or not the phone currently ships an sftp subsystem (see the trap above).
 - Phone internet: on the host run `ssh -N -R 1080 $PHONE_USER@$PHONE_IP`; the phone's
   `/etc/profile.d/proxy.sh` points pacman/curl/git at `socks5h://127.0.0.1:1080`.
   The phone has no route of its own until you join Wi-Fi.

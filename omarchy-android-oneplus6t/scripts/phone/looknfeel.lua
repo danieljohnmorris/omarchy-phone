@@ -27,3 +27,15 @@ hl.config({ misc = { key_press_enables_dpms = false, mouse_move_enables_dpms = f
 -- No pointer on a touchscreen: hide it after a moment of no mouse movement and
 -- on every touch. Hyprland otherwise draws one in the middle of the screen at login.
 hl.config({ cursor = { inactive_timeout = 1, hide_on_touch = true, hide_on_key_press = true } })
+
+-- Concept shell look: tight gaps, thin borders. Border *colours* are the
+-- theme's job (its hyprland.lua loads before this) — hardcoding them here
+-- froze the focus accent to Tokyo Night across theme switches.
+hl.config({
+  general = {
+    gaps_in = 4,
+    gaps_out = 6,
+    border_size = 2,
+  },
+  decoration = { rounding = 6 },
+})

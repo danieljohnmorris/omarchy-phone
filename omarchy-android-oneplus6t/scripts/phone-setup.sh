@@ -68,6 +68,8 @@ ssh $PH 'cp -rn /etc/skel/. ~/; cp /etc/skel/.bashrc ~/.bashrc
 echo "== keyboard toggle bar widget (squeekboard auto-show is unreliable on Hyprland)"
 ssh $PH 'mkdir -p ~/.config/omarchy/plugins/fajita.keyboard ~/.config/omarchy/plugins/fajita.cellular ~/.local/bin'
 scp -q "$HERE/phone/plugins/fajita.keyboard/manifest.json" "$HERE/phone/plugins/fajita.keyboard/BarWidget.qml" $PH:~/.config/omarchy/plugins/fajita.keyboard/
+ssh $PH 'mkdir -p ~/.config/omarchy/plugins/fajita.close'
+scp -q "$HERE/phone/plugins/fajita.close/manifest.json" "$HERE/phone/plugins/fajita.close/BarWidget.qml" $PH:~/.config/omarchy/plugins/fajita.close/
 scp -q "$HERE/phone/plugins/fajita.cellular/manifest.json" "$HERE/phone/plugins/fajita.cellular/BarWidget.qml" "$HERE/phone/plugins/fajita.cellular/Panel.qml" $PH:~/.config/omarchy/plugins/fajita.cellular/
 scp -q "$HERE/phone/fajita-osk-toggle" "$HERE/phone/fajita-osk-start" "$HERE/phone/fajita-osk-fit" "$HERE/phone/fajita-slot-ok" "$HERE/phone/fajita-screen-off" "$HERE/phone/fajita-power-key" "$HERE/phone/fajita-cell-status" "$HERE/phone/fajita-cell-toggle" "$HERE/phone/fajita-cell-info" "$HERE/phone/fajita-cell-reconnect" $PH:~/.local/bin/
 # gum is a shim, not a fajita-* script, and it goes to /usr/local/bin because

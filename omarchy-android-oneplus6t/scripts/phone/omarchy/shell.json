@@ -19,15 +19,18 @@
         },
         {
           "id": "omarchy.workspaces"
-        },
-        {
-          "id": "fajita.keyboard"
         }
       ],
       "center": [],
       "right": [
         {
           "id": "fajita.cellular"
+        },
+        {
+          "id": "fajita.close"
+        },
+        {
+          "id": "fajita.keyboard"
         },
         {
           "id": "omarchy.tray"
@@ -43,6 +46,9 @@
         },
         {
           "id": "omarchy.monitor"
+        },
+        {
+          "id": "omarchy.power"
         }
       ]
     }

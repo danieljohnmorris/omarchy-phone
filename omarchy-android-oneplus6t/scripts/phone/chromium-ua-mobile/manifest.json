@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Mobile UA hints (fajita)",
+  "version": "1.0",
+  "description": "Reports the phone as a mobile device through User-Agent Client Hints — the --user-agent flag only changes the UA string, and sites that trust userAgentData still serve desktop layout.",
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["ua.js"],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": true
+    }
+  ]
+}

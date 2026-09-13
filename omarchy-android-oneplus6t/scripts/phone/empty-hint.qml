@@ -49,7 +49,12 @@ ShellRoot {
   readonly property bool isEmpty: wsId > 0 && wsWindows === 0
 
   function launch() {
-    Quickshell.execDetached(["bash", "-lc", "omarchy-menu summon apps"])
+    // The Qt apps menu: touch selection works and the OSK rises for its search
+    // field. wofi does neither — it ignores pointer/touch selection entirely
+    // (verified by tap injection) and its GTK input-method path never wakes
+    // squeekboard on this build. (A custom bottom input bar lived here once —
+    // removed: the focus/OSK/primer dance was too fragile.)
+    Quickshell.execDetached(["omarchy-menu", "summon", "apps"])
   }
 
   // Hyprland's own events are the trigger; polling would either lag the tap
@@ -79,7 +84,7 @@ ShellRoot {
       }
       root.cBg = pick("dark_background", "#0d0d12")
       root.cText = pick("muted", "#7a7a8a")
-      root.cAccent = pick("blue", "#8d8d8d")
+      root.cAccent = pick("accent", "#8d8d8d")
       root.cBorder = pick("lighter_background", "#2a2a34")
     }
   }
@@ -105,33 +110,6 @@ ShellRoot {
       anchors.centerIn: parent
       spacing: 22
 
-      // The dwindle split, drawn rather than iconified: two tiles, the second
-      // offset along the long edge, which is what a tap-launch does next.
-      Item {
-        width: 26
-        height: 54
-        anchors.horizontalCenter: parent.horizontalCenter
-
-        Rectangle {
-          width: 11; height: 26
-          x: 0; y: 0
-          color: root.cBorder
-        }
-        Rectangle {
-          width: 11; height: 26
-          x: 13; y: 26
-          color: root.cBorder
-        }
-      }
-
-      Text {
-        anchors.horizontalCenter: parent.horizontalCenter
-        text: "workspace " + root.wsId + " is empty"
-        color: root.cText
-        font.family: "JetBrainsMono Nerd Font"
-        font.pixelSize: 17
-      }
-
       Rectangle {
         id: card
         anchors.horizontalCenter: parent.horizontalCenter
@@ -140,7 +118,7 @@ ShellRoot {
         // wider than its text for exactly this reason.
         height: 56
         radius: 4
-        color: tap.pressed ? root.cBorder : "transparent"
+        color: tap.pressed ? root.cBorder : Qt.rgba(root.cBg.r, root.cBg.g, root.cBg.b, 0.92)
         border.width: 1
         border.color: root.cBorder
 

@@ -1,0 +1,19 @@
+#!/bin/bash
+# Phone lock screen: shows ~/.config/fajita/lock.qml (swipe up to unlock).
+# Replaces omarchy-system-lock on the phone — the session lock has no keyboard
+# above it (ext-session-lock covers squeekboard), so the password flow is a
+# pocket brick. Patched into the idle service by apply-shell-patches.sh and
+# used by the menu's system.lock row. See README "Lock screen".
+set -u
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+# ssh/menu-spawned shells have no WAYLAND_DISPLAY; the compositor's socket is
+# the only wayland-N in the runtime dir (README trap: never ls -t the hypr dir).
+[ -n "${WAYLAND_DISPLAY:-}" ] || \
+  export WAYLAND_DISPLAY=$(ls "$XDG_RUNTIME_DIR" 2>/dev/null | grep -E '^wayland-[0-9]+$' | head -1)
+[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] || \
+  export HYPRLAND_INSTANCE_SIGNATURE=$(hyprctl instances -j | python3 -c 'import sys,json;a=json.load(sys.stdin);print(a[0]["instance"] if a else "")')
+
+# Fresh lock every time: a stale hidden instance would eat the spawn.
+pkill -f 'lock[.]qml' 2>/dev/null || true
+sleep 0.3
+setsid quickshell -p "$HOME/.config/fajita/lock.qml" >/dev/null 2>&1 &
