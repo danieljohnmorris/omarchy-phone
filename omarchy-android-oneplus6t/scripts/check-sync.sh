@@ -54,6 +54,13 @@ phone/notif.qml:.config/fajita/notif.qml
 phone/quicksettings.qml:.config/fajita/quicksettings.qml
 phone/lock.qml:.config/fajita/lock.qml
 phone/fajita-lock-screen:.local/bin/fajita-lock-screen
+phone/plugins/fajita.cellular/manifest.json:.config/omarchy/plugins/fajita.cellular/manifest.json
+phone/plugins/fajita.cellular/BarWidget.qml:.config/omarchy/plugins/fajita.cellular/BarWidget.qml
+phone/plugins/fajita.cellular/Panel.qml:.config/omarchy/plugins/fajita.cellular/Panel.qml
+phone/fajita-cell-status:.local/bin/fajita-cell-status
+phone/fajita-cell-info:.local/bin/fajita-cell-info
+phone/fajita-cell-toggle:.local/bin/fajita-cell-toggle
+phone/fajita-cell-reconnect:.local/bin/fajita-cell-reconnect
 omarchy-packages.txt:.local/share/fajita/omarchy-packages.txt
 repack-noarch.sh:.local/bin/repack-noarch.sh
 "
