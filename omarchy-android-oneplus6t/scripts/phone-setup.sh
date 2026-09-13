@@ -87,6 +87,8 @@ ssh $PH 'sudo install -m755 /tmp/gum /usr/local/bin/gum'
 ssh $PH 'cat > /tmp/omarchy-theme-switcher' < "$HERE/phone/omarchy-theme-switcher"
 ssh $PH 'sudo install -m755 /tmp/omarchy-theme-switcher /usr/local/bin/omarchy-theme-switcher'
 scp -q "$HERE/phone/squeekboard.service" "$HERE/phone/osk-fit.service" "$HERE/phone/empty-hint.service" $PH:~/.config/systemd/user/
+scp -q "$HERE/phone/fajita-osk-theme" $PH:~/.local/bin/
+ssh $PH 'chmod +x ~/.local/bin/fajita-osk-theme && ~/.local/bin/fajita-osk-theme'
 
 # An empty workspace draws nothing on a tiling compositor and there is no
 # keyboard to press SUPER+RETURN with, so it looks exactly like a dead phone.

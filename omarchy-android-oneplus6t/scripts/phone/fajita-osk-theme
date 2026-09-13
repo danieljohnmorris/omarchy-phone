@@ -1,0 +1,33 @@
+#!/bin/bash
+# Regenerate the squeekboard GTK theme from the current Omarchy theme.
+# squeekboard renders keys with GTK and ignores Omarchy colours otherwise
+# (it stays Adwaita grey). squeekboard.service runs with GTK_THEME=FajitaOsk,
+# so this file is the only consumer of the theme and nothing else changes.
+set -euo pipefail
+C=${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/current/theme/colors.toml
+pick() { grep -E "^$1 *=" "$C" | head -1 | sed -E "s/.*\"([^\"]+)\".*/\1/"; }
+BG=$(pick dark_background); KEYS=$(pick lighter_background); FG=$(pick foreground)
+ACC=$(pick accent); SEL=$(pick selection)
+mkdir -p ~/.themes/FajitaOsk/gtk-3.0
+cat > ~/.themes/FajitaOsk/gtk-3.0/gtk.css <<CSS
+@define-color theme_bg_color $BG;
+@define-color theme_fg_color $FG;
+@define-color theme_selected_bg_color $ACC;
+@define-color theme_selected_fg_color $BG;
+* {
+  background-color: @theme_bg_color;
+  color: @theme_fg_color;
+  border-color: $SEL;
+  outline-color: @theme_selected_bg_color;
+}
+window { background-color: @theme_bg_color; }
+button {
+  background-color: $KEYS;
+  color: @theme_fg_color;
+}
+button:active, button:checked {
+  background-color: @theme_selected_bg_color;
+  color: @theme_selected_fg_color;
+}
+CSS
+printf "[X-GNOME-Metatheme]\nName=FajitaOsk\nType=Theme\n" > ~/.themes/FajitaOsk/index.theme

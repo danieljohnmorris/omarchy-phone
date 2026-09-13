@@ -1,15 +1,17 @@
 #!/bin/bash
 # Omarchy theme hook (theme-set.d): keep the phone's second rows on theme.
 #
-# The Omarchy shell reloads its colours on theme switch, but two helpers
+# The Omarchy shell reloads its colours on theme switch, but three helpers
 # snapshot the palette once and go stale:
 #   - waybar (clock row): fajita-second-bar generates its stylesheet from
 #     colors.toml at start only.
 #   - empty-hint: FileView watches the resolved inode of
 #     current/theme/colors.toml, and a theme switch swaps the `current/theme`
 #     symlink, which the watcher never sees.
-# Restarting both re-reads the new theme.
+#   - squeekboard: GTK theme FajitaOsk is generated from colors.toml by
+#     fajita-osk-theme; regenerate it and restart to re-read.
 set -u
 
-systemctl --user reset-failed waybar.service empty-hint.service 2>/dev/null || true
-systemctl --user restart waybar.service empty-hint.service
+$HOME/.local/bin/fajita-osk-theme || true
+systemctl --user reset-failed waybar.service empty-hint.service squeekboard.service 2>/dev/null || true
+systemctl --user restart waybar.service empty-hint.service squeekboard.service

@@ -28,6 +28,7 @@ phone/waybar.service:.config/systemd/user/waybar.service
 phone/fajita-osk-start:.local/bin/fajita-osk-start
 phone/fajita-osk-primer:.local/bin/fajita-osk-primer
 phone/fajita-osk-toggle:.local/bin/fajita-osk-toggle
+phone/fajita-osk-theme:.local/bin/fajita-osk-theme
 phone/fajita-osk-fit:.local/bin/fajita-osk-fit
 phone/fajita-slot-ok:.local/bin/fajita-slot-ok
 phone/fajita-screen-off:.local/bin/fajita-screen-off
