@@ -1,4 +1,4 @@
-# Omarchy ports
+# omarchy-phone
 
 I put [Omarchy](https://omarchy.org) on a OnePlus 6T. It boots Arch Linux ARM
 with a mainline kernel instead of Android, then Hyprland, then Omarchy's own
