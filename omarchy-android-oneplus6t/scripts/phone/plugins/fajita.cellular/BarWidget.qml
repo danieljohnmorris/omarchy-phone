@@ -118,7 +118,7 @@ BarWidget {
   Row {
     id: row
     anchors.verticalCenter: parent.verticalCenter
-    spacing: Style.space(4)
+    spacing: Style.space(1)
 
     BarIconButton {
       id: button
@@ -134,12 +134,6 @@ BarWidget {
                    + (root.rat !== "" ? " " + root.rat : "")
                    + " · " + root.quality + "%"
                    + " · data " + root.dataState
-      onPressed: function(b) {
-        if (b === Qt.RightButton)
-          root.bar.run("fajita-cell-toggle");
-        else
-          root.togglePanel();
-      }
     }
 
     Text {
@@ -150,9 +144,20 @@ BarWidget {
       font.family: root.bar ? root.bar.fontFamily : Style.font.family
       font.pixelSize: Style.font.bodySmall
 
-      TapHandler {
-        onTapped: root.togglePanel()
-      }
     }
   }
+    // One hit target across glyph + label: the button hugs a 14px box but the
+    // 16px canvas (and the label) extend past it, so per-child handlers left
+    // dead zones. Sibling of the Row (positioners reject fill anchors inside
+    // a Row) and declared after it, so it stacks on top and consumes clicks.
+    MouseArea {
+      anchors.fill: row
+      acceptedButtons: Qt.LeftButton | Qt.RightButton
+      onClicked: function(mouse) {
+        if (mouse.button === Qt.RightButton)
+          root.bar.run("fajita-cell-toggle");
+        else
+          root.togglePanel();
+      }
+    }
 }

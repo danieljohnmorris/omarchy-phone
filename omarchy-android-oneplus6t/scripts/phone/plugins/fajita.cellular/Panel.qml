@@ -144,6 +144,10 @@ Panel {
     controller.show()
   }
 
+  function close() {
+    controller.hide()
+  }
+
   function toggle() {
     opened ? close() : open()
   }

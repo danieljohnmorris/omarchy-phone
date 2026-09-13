@@ -1,16 +1,16 @@
-/* Matches Omarchy's Tokyo Night bar so the two rows read as one unit. */
+/* Matches Omarchy's themed bar (tokens: bar.background/text, accent) so the
+   two rows read as one band. Battery keeps conventional status colours. */
 * {
   font-family: "JetBrainsMono Nerd Font", monospace;
   font-size: 15px;
   min-height: 0;
 }
 window#waybar {
-  background: #16161e;
-  color: #a9b1d6;
-  border-bottom: 1px solid #292e42;
+  background: #2c2525;
+  color: #e6d9db;
 }
 #clock {
-  color: #c0caf5;
+  color: #e6d9db;
   font-size: 18px;
   font-weight: 600;
   padding: 0 12px;
@@ -18,4 +18,4 @@ window#waybar {
 #battery { color: #9ece6a; padding: 0 12px; }
 #battery.warning { color: #e0af68; }
 #battery.critical { color: #f7768e; }
-#custom-date { color: #7aa2f7; padding: 0 12px; }
+#custom-date { color: #f38d70; padding: 0 12px; }
