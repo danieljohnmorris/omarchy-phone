@@ -523,7 +523,8 @@ knowing because they produce the same 25s `Timeout was reached`:
   other half of why VoLTE is unreachable. `qmicli -p` is useless here — there
   is no `qmi-proxy` binary in the rootfs, so drop the `-p` and take the device
   exclusively. Restart `ModemManager.service` afterwards or the phone has no
-  data: the `three` profile does not come back on its own.
+  data; `three` is `autoconnect=yes`, so NM reactivates it by itself once MM
+  exports the modem again — no manual `nmcli connection up` needed.
 
 ## Upgrading Omarchy
 
