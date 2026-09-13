@@ -121,6 +121,20 @@ for pair in "phone/ttfx-aarch64:/usr/local/bin/ttfx" "phone/gum:/usr/local/bin/g
   fi
 done
 
+# File contents matching is not the same as the services running. q6voiced sat
+# dead for an hour behind a green sync report once (PartOf= propagated a stop
+# and nothing restarted it), so report liveness separately from equality.
+echo
+echo "unit state on the phone:"
+ssh -o ConnectTimeout=8 "$PH" '
+  export XDG_RUNTIME_DIR=/run/user/$(id -u)
+  for u in q6voiced.service ModemManager.service; do
+    printf "  %-34s %s (%s)\n" "$u" "$(systemctl is-active "$u")" "$(systemctl is-enabled "$u" 2>/dev/null)"
+  done
+  for u in fajita-call-watch.service waybar.service squeekboard.service; do
+    printf "  %-34s %s (%s)\n" "$u --user" "$(systemctl --user is-active "$u")" "$(systemctl --user is-enabled "$u" 2>/dev/null)"
+  done' 2>/dev/null || echo "  (unreachable)"
+
 echo
 echo "$same in sync, $diff_n differ, $missing missing"
 [ $((diff_n+missing)) -eq 0 ] && echo "repo matches the phone"

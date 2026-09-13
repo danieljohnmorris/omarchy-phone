@@ -568,10 +568,15 @@ voicemail. Nothing on the device can be fixed to change that.
 
 Which SIM would work, then: one on an operator that still runs a
 circuit-switched radio, so the modem can CS-attach and ModemManager's dial
-works unchanged. In the UK that means EE, Vodafone or O2 (and their MVNOs),
-which kept 2G after switching 3G off; Three never ran 2G and shut 3G down in
-December 2024, which is why this particular SIM is the worst case. Operators
-that retired both (most of the US) are VoLTE-only and equally unreachable.
+works unchanged. That requirement is structural and follows from the evidence
+above. Which operators still meet it is *not* measured here — everything below
+this line is background as of 2026, from general knowledge rather than from
+this device, and will age: in the UK, EE, Vodafone and O2 (and their MVNOs)
+kept 2G after switching 3G off, while Three never ran 2G and shut 3G down in
+December 2024, which is why this particular SIM is the worst case; operators
+that retired both radios are VoLTE-only and equally unreachable. Treat it as a
+hint about which SIM to borrow, not as fact — the only reliable test is to put
+a SIM in and read `--nas-get-serving-system` for a `CS: 'attached'`.
 
 Beware one iMessage trap when testing: an iPhone addressing this number may
 send blue (iMessage over IP, never touching the modem). The bubble must be
