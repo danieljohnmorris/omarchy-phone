@@ -7,6 +7,8 @@ sudo cp -n "$P" "$P.orig" 2>/dev/null || true
 sudo python3 - "$P" <<'PY'
 import sys
 p=sys.argv[1]; s=open(p).read()
+if "Qt.inputMethod && Qt.inputMethod.visible" in s:
+    print("already patched"); sys.exit(0)
 old="""  mask: Region {
     width: root.screenW
     height: root.screenH
@@ -14,21 +16,27 @@ old="""  mask: Region {
 new="""  mask: Region {
     width: root.screenW
     height: root.screenH
-    // Phone port: the on-screen keyboard shares this overlay layer, so a tap on
-    // a key counts as an outside click and closes the panel before anything is
-    // typed. Subtract the keyboard strip so taps reach squeekboard instead.
+    // Phone port: the on-screen keyboard sits on the same overlay layer as this
+    // full-screen dismissal surface, so the first tap on a key registers as an
+    // "outside click" and closes the panel before anything is typed. Subtract
+    // the keyboard strip - but only while the input method is actually up.
+    // Unconditional, the strip dead-zones the bottom quarter of the screen:
+    // taps there fall through the mask and never dismiss the panel.
     regions: [
       Region {
         x: 0
-        y: root.screenH - 315
+        y: (Qt.inputMethod && Qt.inputMethod.visible) ? root.screenH - 315 : root.screenH
         width: root.screenW
-        height: 315
+        height: (Qt.inputMethod && Qt.inputMethod.visible) ? 315 : 0
         intersection: Intersection.Subtract
       }
     ]
   }"""
-if new.split("\n")[3] in s:
-    print("already patched"); sys.exit(0)
+# Migrate a file patched by the older script (unconditional carve-out).
+s2 = s.replace("        y: root.screenH - 315\n", "        y: (Qt.inputMethod && Qt.inputMethod.visible) ? root.screenH - 315 : root.screenH\n", 1)
+s2 = s2.replace("        height: 315\n", "        height: (Qt.inputMethod && Qt.inputMethod.visible) ? 315 : 0\n", 1)
+if s2 != s:
+    open(p,"w").write(s2); print("migrated to conditional"); sys.exit(0)
 assert old in s, "anchor not found; upstream KeyboardPanel.qml changed"
 open(p,"w").write(s.replace(old,new,1)); print("patched")
 PY
@@ -93,6 +101,23 @@ new="""  // Phone port: these were fixed at laptop size, so the 768-wide preview
 assert old in s, "image picker anchor not found; upstream ImagePicker.qml changed"
 open(p,"w").write(s.replace(old,new,1)); print("patched image picker")
 PY3
+
+# 4) Notification toasts: clear the waybar clock row (second 34px bar at y=43)
+# that upstream's barClearance (omarchy bar + gap only) knows nothing about.
+N=/usr/share/omarchy/shell/plugins/notifications/Service.qml
+sudo cp -n "$N" "$N.orig" 2>/dev/null || true
+sudo python3 - "$N" <<'PY4'
+import sys
+p=sys.argv[1]; s=open(p).read()
+old="  readonly property int barClearance: liveBarSize + Style.gapsOut"
+new="""  // Phone port: the waybar clock row sits directly under Omarchy's bar;
+  // toasts must clear both or they cover the clock.
+  readonly property int barClearance: liveBarSize + 34 + Style.gapsOut"""
+if new.splitlines()[-1] in s:
+    print("already patched notifications"); sys.exit(0)
+assert old in s, "notifications anchor not found; upstream Service.qml changed"
+open(p,"w").write(s.replace(old,new,1)); print("patched notifications")
+PY4
 
 omarchy-restart-shell >/dev/null 2>&1 || true
 # the shell remaps its bar; restart the clock row so it lands beneath it again
