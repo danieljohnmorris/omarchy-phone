@@ -7,13 +7,15 @@
 +    // Phone port: the on-screen keyboard sits on the same overlay layer as this
 +    // full-screen dismissal surface, so the first tap on a key registers as an
 +    // "outside click" and closes the panel before anything is typed. Subtract
-+    // the keyboard strip so those taps reach squeekboard instead.
++    // the keyboard strip - but only while the input method is actually up.
++    // Unconditional, the strip dead-zones the bottom quarter of the screen:
++    // taps there fall through the mask and never dismiss the panel.
 +    regions: [
 +      Region {
 +        x: 0
-+        y: root.screenH - 315
++        y: (Qt.inputMethod && Qt.inputMethod.visible) ? root.screenH - 315 : root.screenH
 +        width: root.screenW
-+        height: 315
++        height: (Qt.inputMethod && Qt.inputMethod.visible) ? 315 : 0
 +        intersection: Intersection.Subtract
 +      }
 +    ]
