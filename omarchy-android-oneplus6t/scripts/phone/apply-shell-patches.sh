@@ -166,7 +166,7 @@ p=sys.argv[1]; s=open(p).read()
 if "fajita-lock-screen" in s:
     print("idle lock already patched"); sys.exit(0)
 old='''runProcess(lockProcess, "lock", "omarchy-system-lock")'''
-new='''runProcess(lockProcess, "lock", "fajita-lock-screen")'''
+new='''runProcess(lockProcess, "lock", "/home/dan/.local/bin/fajita-lock-screen")'''
 assert old in s, "idle anchor not found; upstream idle Service.qml changed"
 open(p,"w").write(s.replace(old,new,1)); print("patched idle lock")
 PY7

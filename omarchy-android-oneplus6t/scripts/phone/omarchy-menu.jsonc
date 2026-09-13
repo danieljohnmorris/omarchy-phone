@@ -16,7 +16,7 @@
     "icon": "󰌾",
     "label": "Lock",
     "description": "Lock screen, swipe up to unlock",
-    "action": "fajita-lock-screen"
+    "action": "/home/dan/.local/bin/fajita-lock-screen"
   },
 
   // Closing apps on touch: no titlebar buttons and hyprgrass is unavailable,
