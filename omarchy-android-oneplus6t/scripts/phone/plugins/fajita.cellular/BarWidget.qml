@@ -109,10 +109,12 @@ BarWidget {
     onTriggered: probe.running = true
   }
 
-  // The bars glyph lives in a standard icon slot (same optical centering as
-  // every other bar icon); the RAT label is a plain Text beside it. Stuffing
-  // both into one BarIconButton overflows the fixed icon slot and makes the
-  // bar's spacing look uneven.
+  // The bars glyph lives in a standard icon button (same optical rendering as
+  // every other bar icon); the RAT label is a plain Text beside it. The
+  // button's width is hugged to the glyph — the default statusSlot (21px)
+  // centers the ~9px-wide glyph with ~7px dead space each side, which reads
+  // as a hole between bars and label (stock single icons spread that dead
+  // space between each other, a compound icon+label cannot).
   Row {
     id: row
     anchors.verticalCenter: parent.verticalCenter
@@ -121,6 +123,11 @@ BarWidget {
     BarIconButton {
       id: button
       bar: root.bar
+      // Horizontal bars: hug the 16px icon canvas. This instance assignment
+      // permanently replaces BarIconButton's fixedWidth binding; on vertical
+      // bars width falls to WidgetButton's content sizing (12px — label is
+      // hidden), while height keeps the untouched slotSize binding.
+      fixedWidth: root.bar && root.bar.vertical ? -1 : Style.bar.iconCanvas - 2
       slotSize: Style.bar.statusSlot
       text: root.barsGlyph(root.quality, root.usable)
       tooltipText: "Cellular: " + (root.modemState || "no modem")
