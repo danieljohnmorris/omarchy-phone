@@ -33,7 +33,15 @@ create_and_send() { # $1 number, $2 text
   out=$(mmcli -m "$MODEM" --messaging-create-sms="number=\"$1\",text=\"$2\"" 2>&1)
   path=$(grep -oE '/org/freedesktop/ModemManager1/SMS/[0-9]+' <<<"$out" | head -1)
   [ -n "$path" ] || { echo "create failed: $out" >&2; return 1; }
-  mmcli -s "$path" --send >/dev/null || { echo "send failed: $path" >&2; return 1; }
+  # Report the network's own reason, not the object path, and never leave the
+  # draft behind: a rejected submit would otherwise pile up stored SMS objects
+  # that the next `sweep` refuses to touch (not `received`).
+  if ! out=$(mmcli -s "$path" --send 2>&1); then
+    mmcli -m "$MODEM" --messaging-delete-sms="$path" >/dev/null 2>&1 || true
+    out=${out#error: }
+    echo "send failed: ${out:-unknown error}" >&2
+    return 1
+  fi
   mmcli -m "$MODEM" --messaging-delete-sms="$path" >/dev/null 2>&1 || true
 }
 
@@ -52,16 +60,17 @@ ts_to_epoch() {
 ingest() { # $1 = /org/freedesktop/ModemManager1/SMS/N
   local j number text state ts
   j=$(mmcli -J -s "$1" 2>/dev/null) || return 0
-  # -J output is flat with dotted keys (verified in cli/mmcli-output.c);
-  # accept the nested shape too in case that changes upstream.
-  number=$(jq -r 'getpath(["sms.number"]) // getpath(["sms","number"]) // ""' <<<"$j")
-  text=$(jq -r 'getpath(["sms.text"]) // getpath(["sms","text"]) // ""' <<<"$j")
-  state=$(jq -r 'getpath(["sms.state"]) // getpath(["sms","state"]) // ""' <<<"$j")
+  # -J nests three levels deep on this mmcli: .sms.content.{number,text} and
+  # .sms.properties.{state,timestamp} (verified against a live SMS object; the
+  # flat dotted form is what -K prints, and is accepted here as a fallback).
+  number=$(jq -r '.sms.content.number // getpath(["sms.content.number"]) // ""' <<<"$j")
+  text=$(jq -r '.sms.content.text // getpath(["sms.content.text"]) // ""' <<<"$j")
+  state=$(jq -r '.sms.properties.state // getpath(["sms.properties.state"]) // ""' <<<"$j")
   # Only inbound messages are ours to consume. Never touch anything else:
   # a sweep that deleted non-received objects would race `send` and destroy
   # our own outgoing draft mid-submit (mmcli then reports a send timeout).
   [ "$state" = received ] || return 0
-  ts=$(jq -r 'getpath(["sms.timestamp"]) // getpath(["sms","timestamp"]) // ""' <<<"$j")
+  ts=$(jq -r '.sms.properties.timestamp // getpath(["sms.properties.timestamp"]) // ""' <<<"$j")
   ts=$(ts_to_epoch "${ts:-$(date +%Y%m%dT%H%M%S%z)}")
   # Dedupe on the full tuple: an Added signal and a sweep can race.
   if jq -e --argjson ts "$ts" --arg number "$number" --arg text "$text" \

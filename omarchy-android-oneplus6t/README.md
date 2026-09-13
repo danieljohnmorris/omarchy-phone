@@ -486,6 +486,14 @@ guessing it wastes an afternoon:
   never connected fails with "This call was not active": `fajita-call hangup`
   falls back to `--voice-delete-call`, and `list` reaps only an explicit
   `terminated` (a freshly created call legitimately reports `--`).
+- `-J` (and `-K`) nest SMS fields three levels deep: `.sms.content.number`,
+  `.sms.content.text`, `.sms.properties.state`, `.sms.properties.timestamp` —
+  *not* `.sms.number`/`.sms.state`. Parsing the short paths yields empty
+  fields, the `received` test never passes, and every inbound message is
+  dropped without a trace. `fajita-sms ingest` reads the long paths.
+- A submit can take 25s and can fail, so `messages.qml` clears the composer
+  only after `fajita-sms send` exits 0. Clearing on tap made a rejected send
+  look like the text had simply vanished.
 
 **Calls and SMS do not work on this SIM, and no userspace change here can fix
 it.** Three UK (MCC 234 / MNC 20) is VoLTE-only: `qmicli --nas-get-serving-system`
@@ -498,6 +506,24 @@ Forcing a CS-capable RAT is refused by the plugin (`Unsupported: The given
 combination of allowed and preferred modes is not supported`). A SIM on an
 operator that still runs 2G/3G CS fallback is the only way to test the path
 end to end; everything above it is in place and waiting.
+
+Two cheaper explanations were ruled out before settling on this, both worth
+knowing because they produce the same 25s `Timeout was reached`:
+
+- **Not a missing service centre.** An unsent submit reports
+  `sms.properties.smsc : --` because MM only echoes an SMSC you set yourself.
+  Creating the draft with Three's SMSC explicitly
+  (`--messaging-create-sms='number="…",text="…",smsc="+447782000800"'`) still
+  times out with `message-reference` never assigned.
+- **Not the modem's SMS routing.** With MM stopped,
+  `qmicli -d qrtr://0 --wms-get-routes` returns six routes, all
+  `store-and-notify`, so an inbound message would be stored and signalled.
+  `--ims-get-ims-services-enabled-setting` fails with QMI error 70
+  (`InvalidOperation`): the modem exposes no IMS service to query, which is the
+  other half of why VoLTE is unreachable. `qmicli -p` is useless here — there
+  is no `qmi-proxy` binary in the rootfs, so drop the `-p` and take the device
+  exclusively. Restart `ModemManager.service` afterwards or the phone has no
+  data: the `three` profile does not come back on its own.
 
 ## Upgrading Omarchy
 

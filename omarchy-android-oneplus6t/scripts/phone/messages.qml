@@ -26,6 +26,7 @@ ShellRoot {
   property string draft: ""
   property string toField: ""
   property string lastError: ""
+  property bool sending: false     // a submit is in flight (can take ~25s)
 
   // The number the composer sends to: the open conversation, or whatever the
   // new-message screen has been addressed to.
@@ -171,23 +172,36 @@ ShellRoot {
     return (d.getMonth() + 1) + "/" + d.getDate() + " " + hm
   }
 
+  // A submit can take ~25s and can fail (this SIM's network refuses it), so
+  // never destroy what the user typed until the helper has exited 0. Clearing
+  // optimistically made a rejected send look like the message just vanished.
   function send() {
-    var number = root.target
-    if (!number || !root.draft) return
-    root.run("fajita-sms send " + root.sq(number) + " " + root.sq(root.draft))
-    bodyInput.clear()
-    // Sending from the new-message screen drops you into that conversation.
-    root.thread = number
+    if (!root.target || !root.draft || root.sending) return
+    root.lastError = ""
+    root.sending = true
+    root.thread = root.target
     root.screen = "thread"
-    // The store gains the outgoing line as soon as the helper appends it;
-    // reload shortly after rather than optimistically faking the row.
-    sendSettle.restart()
+    sendProc.command = ["bash", "-lc",
+      "fajita-sms send " + root.sq(root.target) + " " + root.sq(root.draft)]
+    sendProc.running = true
   }
 
-  Timer {
-    id: sendSettle
-    interval: 1200
-    onTriggered: store.reload()
+  Process {
+    id: sendProc
+    running: false
+    command: ["true"]
+    stderr: SplitParser {
+      onRead: data => { if (data.trim()) root.lastError = data.trim() }
+    }
+    onExited: code => {
+      root.sending = false
+      if (code === 0) {
+        bodyInput.clear() // the text is in the store now; safe to drop
+        store.reload()
+      } else if (root.lastError === "") {
+        root.lastError = "send failed (exit " + code + ")"
+      }
+    }
   }
 
   IpcHandler {
@@ -562,15 +576,19 @@ ShellRoot {
           }
 
           Rectangle {
-            width: 86
-            height: 44
+            Layout.preferredWidth: 86
+            Layout.preferredHeight: 44
             radius: 8
-            color: (root.draft && root.target) ? root.cGreen : root.cRow
+            // Idle-looking for 25s reads as a dead button, so the in-flight
+            // state is explicit.
+            color: root.sending ? root.cRow
+                 : (root.draft && root.target) ? root.cGreen : root.cRow
 
             Text {
               anchors.centerIn: parent
-              text: "send"
-              color: (root.draft && root.target) ? root.cBg : root.cMuted
+              text: root.sending ? "…" : "send"
+              color: root.sending ? root.cAccent
+                   : (root.draft && root.target) ? root.cBg : root.cMuted
               font.family: "JetBrainsMono Nerd Font"
               font.pixelSize: 14
             }
