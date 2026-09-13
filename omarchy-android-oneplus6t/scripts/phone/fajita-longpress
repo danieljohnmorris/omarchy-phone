@@ -1,0 +1,171 @@
+#!/usr/bin/env python3
+# ~/.local/bin/fajita-longpress on the phone, run by fajita-longpress.service.
+#
+# Hyprgrass will not compile against Hyprland 0.56's Lua headers, so there is
+# no compositor-level gesture support on this phone (Ivan's port hit the same
+# wall and solved it the same way: read the touchscreen directly). This daemon
+# reads the Synaptics S3706B evdev node (protocol B) and detects a press held
+# ~0.55s without meaningful movement, then asks the radial menu (fajita-radial,
+# a standalone Quickshell instance) to open at the touch point.
+#
+# Reading does not consume events: every evdev reader gets its own copy, and
+# we never EVIOCGRAB, so Hyprland keeps its touches.
+#
+# The touch is only acted on when it lands inside the focused window's
+# geometry (hyprctl -j activewindow): long-pressing the bar, the wallpaper or
+# a panel should not pop a window menu.
+
+import fcntl
+import json
+import os
+import select
+import struct
+import subprocess
+import sys
+import time
+
+DEVICE = "/dev/input/event5"  # Synaptics S3706B (see /proc/bus/input/devices)
+HOLD_S = 0.55
+JITTER = 30.0            # physical px of drift still counted as "held still"
+COOLDOWN_S = 0.9         # after a fire, ignore presses until release
+LOGICAL_W, LOGICAL_H = 540, 1170  # logical screen size (scale 2)
+
+EV_KEY, EV_ABS, EV_SYN = 0x01, 0x03, 0x00
+ABS_MT_SLOT, ABS_MT_POSITION_X, ABS_MT_POSITION_Y = 0x2F, 0x35, 0x36
+ABS_MT_TRACKING_ID, BTN_TOUCH = 0x39, 0x14A
+SYN_REPORT = 0
+
+EVENT = struct.Struct("QHHH4xI")  # sec, usec, type(u16), code(u16), value(i32) — 64-bit timeval with padding
+
+
+def log(msg):
+    print(f"fajita-longpress: {msg}", flush=True)
+
+
+def absinfo(fd, nr):
+    buf = bytearray(24)
+    fcntl.ioctl(fd, 0x80184500 + nr, buf, True)  # EVIOCGABS(nr), struct input_absinfo
+    v = struct.unpack("6i", bytes(buf))
+    return v[1], v[2]  # min, max
+
+
+def logical(fd):
+    xmin, xmax = absinfo(fd, ABS_MT_POSITION_X)
+    ymin, ymax = absinfo(fd, ABS_MT_POSITION_Y)
+    if xmax <= xmin:
+        return lambda x: x, lambda y: y
+    sx = LOGICAL_W / (xmax - xmin)
+    sy = LOGICAL_H / (ymax - ymin)
+    return (lambda x: (x - xmin) * sx), (lambda y: (y - ymin) * sy)
+
+
+def run(cmd, env):
+    return subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=5)
+
+
+def base_env():
+    env = dict(os.environ)
+    env["XDG_RUNTIME_DIR"] = "/run/user/%d" % os.getuid()
+    env.setdefault("WAYLAND_DISPLAY", "wayland-1")
+    hypr = "/run/user/%d/hypr" % os.getuid()
+    try:
+        env["HYPRLAND_INSTANCE_SIGNATURE"] = os.listdir(hypr)[0]
+    except OSError:
+        pass
+    return env
+
+
+def inside_focused_window(env, lx, ly):
+    r = run(["hyprctl", "-j", "activewindow"], env)
+    try:
+        w = json.loads(r.stdout)
+        at, size = w["at"], w["size"]
+        return at[0] <= lx <= at[0] + size[0] and at[1] <= ly <= at[1] + size[1]
+    except (ValueError, KeyError, TypeError):
+        return False
+
+
+def summon(env, lx, ly):
+    r = run(["pgrep", "-f", "fajita/radial.qml"], env)
+    pid = r.stdout.strip().split("\n")[0] if r.stdout.strip() else ""
+    if not pid.isdigit():
+        log("radial menu not running")
+        return
+    r = run(["qs", "ipc", "--pid", pid, "call", "radial", "show", "%d,%d" % (lx, ly)], env)
+    if r.returncode != 0:
+        log("qs ipc failed: %s %s" % (r.stdout.strip(), r.stderr.strip()))
+
+
+def fire(env, lx, ly):
+    if not inside_focused_window(env, lx, ly):
+        return
+    summon(env, lx, ly)
+    log("menu at %d,%d" % (lx, ly))
+
+
+def main():
+    fd = os.open(DEVICE, os.O_RDONLY)
+    to_x, to_y = logical(fd)
+    env = base_env()
+    log("watching %s" % DEVICE)
+
+    touching = False
+    fired = False
+    x = y = 0.0
+    sx = sy = 0.0
+    t0 = 0.0
+    slot = 0
+    deadline = None
+
+    while True:
+        timeout = None if deadline is None else max(0.0, deadline - time.monotonic())
+        r, _, _ = select.select([fd], [], [], timeout)
+        if not r:
+            # A perfectly still finger emits nothing; the select timeout is
+            # the only signal that the hold has elapsed.
+            if touching and not fired and time.monotonic() >= deadline:
+                fired = True
+                fire(env, int(to_x(x)), int(to_y(y)))
+                deadline = None
+            continue
+        data = os.read(fd, 8192)
+        for i in range(len(data) // EVENT.size):
+            sec, usec, typ, code, val = EVENT.unpack_from(data, i * EVENT.size)
+            if typ == EV_ABS and code == ABS_MT_SLOT:
+                slot = val
+            elif typ == EV_ABS and code == ABS_MT_TRACKING_ID and slot == 0:
+                if val == -1:
+                    touching, fired, deadline = False, False, None
+                elif not touching:
+                    touching, fired = True, False
+                    sx, sy, t0 = x, y, time.monotonic()
+                    deadline = t0 + HOLD_S
+            elif typ == EV_ABS and code == ABS_MT_POSITION_X and slot == 0:
+                x = val
+                if touching and fired and time.monotonic() > t0 + COOLDOWN_S:
+                    pass
+                if touching and (abs(x - sx) > JITTER):
+                    deadline, fired = None, False
+            elif typ == EV_ABS and code == ABS_MT_POSITION_Y and slot == 0:
+                y = val
+                if touching and (abs(y - sy) > JITTER):
+                    deadline, fired = None, False
+            elif typ == EV_KEY and code == BTN_TOUCH and slot == 0:
+                if val == 0:
+                    touching, fired, deadline = False, False, None
+                elif val == 1 and not touching:
+                    touching, fired = True, False
+                    sx, sy, t0 = x, y, time.monotonic()
+                    deadline = t0 + HOLD_S
+            elif typ == EV_SYN and code == SYN_REPORT and touching and not fired:
+                if deadline is not None and time.monotonic() >= deadline:
+                    fired = True
+                    fire(env, int(to_x(x)), int(to_y(y)))
+                    deadline = None
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.exit(0)
