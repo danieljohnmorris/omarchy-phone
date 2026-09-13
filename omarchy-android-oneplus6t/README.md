@@ -465,8 +465,19 @@ power-key menu ("Calls", "Messages") or by the watcher on an event:
   incoming calls/SMS. `q6voiced.service` (system, upstream postmarketOS C,
   built by `build-q6voiced.sh`) opens the hostless `VoiceMMode1` PCM
   (`hw:0,6`) on MM call signals; the UCM "Voice Call" verb does the backend
-  routing (earpiece + bottom mic). Verified: flipping the profile exposes
-  `Voice_Call__Earpiece__sink` and `Voice_Call__Mic__source`.
+  routing (earpiece + bottom mic).
+- **The call-audio path is provable without a connectable network.** Create a
+  call and `--start` it: while it is `dialing`, q6voiced opens *both*
+  VoiceMMode1 substreams — `/proc/asound/card0/pcm6{p,c}/sub0/status` go from
+  `closed` to `state: PREPARED` with `owner_pid` equal to q6voiced's MainPID —
+  the card sits on `Voice Call`, and both return to `closed` after hangup. So
+  the kernel q6voice FE and the UCM backend work; only the modem's own
+  downlink/uplink stream is missing, because the call never connects.
+- The watcher's `raise()` is ipc-first, spawn-as-fallback (the shape
+  `apply-shell-patches.sh` uses). Both branches are verified: with nothing
+  running the fallback spawns the window; with an instance up,
+  `ipc call fajita-messages open +44…` navigates the existing process straight
+  to that conversation and never starts a second one.
 - `51-fajita-modem.rules` lets seatless callers (ssh, user units) run MM
   voice/messaging ops; without it every control call returns `Unauthorized`.
 - **`PartOf=` propagates stop but never start**, which silently disabled call
@@ -620,12 +631,16 @@ and Messages apps are installed and tile 50/50 like any other window; verified
 on device: dialing creates and starts a call object, hangup clears it in both
 the live and never-connected cases, the store drives the conversation UI, and
 flipping to the UCM "Voice Call" profile exposes the earpiece sink and call
-mic. Inbound SMS was tested with a second handset and never arrives: the modem
-exports no object and MM emits no `Messaging.Added` signal, so the ingest path
-has only been exercised against a stubbed `received` object. An inbound *call*
-was tested the same way and goes to voicemail with no `CallAdded` and nothing
-in MM's journal at DEBUG: the network never pages this device. Also never
-observed: audio through a connected call.
+mic. The call-audio path itself is verified as far as the network allows: on a
+dial, q6voiced opens both VoiceMMode1 substreams (`PREPARED`, owned by its
+MainPID) and closes them on hangup. Inbound SMS was tested with a second
+handset and never arrives: the modem exports no object and MM emits no
+`Messaging.Added` signal, so the ingest path has only been exercised against a
+stubbed `received` object (the UI-raise half of it is verified). An inbound
+*call* was tested the same way and goes to voicemail with no `CallAdded` and
+nothing in MM's journal at DEBUG: the network never pages this device. The one
+thing never observed is a connected call carrying actual audio, which needs a
+SIM whose operator still offers CS fallback.
 
 Not working: calls and SMS *over the air* on this SIM — Three UK is VoLTE-only
 and there is no IMS stack on mainline sdm845, so the phone registers in neither
