@@ -130,10 +130,20 @@ BarWidget {
       fixedWidth: root.bar && root.bar.vertical ? -1 : Style.bar.iconCanvas - 2
       slotSize: Style.bar.statusSlot
       text: root.barsGlyph(root.quality, root.usable)
-      tooltipText: "Cellular: " + (root.modemState || "no modem")
-                   + (root.rat !== "" ? " " + root.rat : "")
-                   + " · " + root.quality + "%"
-                   + " · data " + root.dataState
+      // Touch devices have no hover-unhover: a tap parks the cursor on the
+      // button and the tooltip sticks over the clock row. Skip it.
+      tooltipText: ""
+      // Handler on the button itself: something in the WidgetButton stack
+      // consumes presses inside the declared box above the sibling overlay,
+      // so the overlay alone leaves the glyph area dead. Both paths toggle;
+      // whichever layer wins, the click works. Log disambiguates in qs log.
+      onPressed: function(b) {
+        console.log("[fajita-cellular] button pressed", b)
+        if (b === Qt.RightButton)
+          root.bar.run("fajita-cell-toggle");
+        else
+          root.togglePanel();
+      }
     }
 
     Text {
@@ -149,11 +159,13 @@ BarWidget {
     // One hit target across glyph + label: the button hugs a 14px box but the
     // 16px canvas (and the label) extend past it, so per-child handlers left
     // dead zones. Sibling of the Row (positioners reject fill anchors inside
-    // a Row) and declared after it, so it stacks on top and consumes clicks.
+    // a Row). Covers gap + label; the button's own onPressed covers its box —
+    // the WidgetButton stack consumes presses above the overlay there.
     MouseArea {
       anchors.fill: row
       acceptedButtons: Qt.LeftButton | Qt.RightButton
       onClicked: function(mouse) {
+        console.log("[fajita-cellular] overlay click", mouse.x, mouse.y, mouse.button)
         if (mouse.button === Qt.RightButton)
           root.bar.run("fajita-cell-toggle");
         else

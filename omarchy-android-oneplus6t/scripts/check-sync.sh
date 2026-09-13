@@ -35,6 +35,7 @@ phone/fajita-screen-off:.local/bin/fajita-screen-off
 phone/fajita-power-key:.local/bin/fajita-power-key
 phone/fajita-second-bar:.local/bin/fajita-second-bar
 phone/hooks/post-boot:.config/omarchy/hooks/post-boot
+phone/hooks/theme-set.d/fajita-theme-rows:.config/omarchy/hooks/theme-set.d/fajita-theme-rows
 phone/apply-shell-patches.sh:.local/bin/apply-shell-patches.sh
 phone/fajita-bar-order:.local/bin/fajita-bar-order
 phone/fajita-omarchy-update:.local/bin/fajita-omarchy-update
