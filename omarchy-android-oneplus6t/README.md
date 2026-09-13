@@ -22,10 +22,10 @@ what doesn't is at the bottom.
 - `scripts/build-hyprland.sh`: rebuilds Hyprland from the Arch PKGBUILD inside
   the chroot (ALARM's binary lags aquamarine's soname).
 - `scripts/build-qcom-services.sh`: pd-mapper, tqftpserv (linux-msm GitHub) and
+  the sdm845-mainline ALSA UCM profiles. Wi-Fi does not appear without pd-mapper.
 - `scripts/build-ttfx.sh`: compiles the Rust `ttfx` effects engine for aarch64
   in an arm64 Docker container (native on Apple Silicon). Prerequisite: Docker
   running on the build host.
-  the sdm845-mainline ALSA UCM profiles. Wi-Fi does not appear without pd-mapper.
 - `scripts/flash.sh`: runs on the host. `unlock`, `boot-test` or `flash` via fastboot.
 - `scripts/phone-setup.sh`: Omarchy layer + phone adaptations over ssh.
 - `scripts/phone/`: the phone-side files (Lua overrides, bash_profile, proxy env, hooks).

@@ -303,9 +303,17 @@ sudo python3 - "$S" <<'PY11'
 import sys
 p = sys.argv[1]; s = open(p).read()
 old = '  while pgrep -t "${tty#/dev/}" -x ttfx >/dev/null; do\n'
-new = '  while pgrep -x ttfx >/dev/null; do\n'
-if new in s and old not in s:
+# Three states: pristine tty form, the earlier un-floored patch, and this
+# version. Floor the respawn loop: if ttfx exits immediately (missing
+# branding file, bad args), pgrep is false at once and the outer while-true
+# storms the CPU; 1s between spawns degrades that to 1 spawn/sec.
+unfloored = '  while pgrep -x ttfx >/dev/null; do\n'
+new = '  sleep 1\n  while pgrep -x ttfx >/dev/null; do\n'
+if new in s:
     print("screensaver wait already patched"); sys.exit(0)
+elif unfloored in s:
+    open(p, "w").write(s.replace(unfloored, new, 1)); print("floored screensaver respawn")
+    sys.exit(0)
 assert old in s, "screensaver wait anchor not found; upstream omarchy-screensaver changed"
 open(p, "w").write(s.replace(old, new, 1)); print("patched screensaver wait")
 PY11
