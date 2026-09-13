@@ -25,6 +25,15 @@
     "tooltip": false
   },
   "battery": {
+    // "bat" pins the gauge node explicitly (bq27411-0). Whether waybar's
+    // BAT* autodetection would have found it on its own was never confirmed
+    // either way — the displayed 89% is identical with and without the key.
+    // 89% while status=Full is real, not a bug: waybar computes
+    // charge_now/charge_full = 2699/3031 mAh = 89%. The kernel's capacity=100
+    // is relative to a learned full the aged cell no longer reaches; the two
+    // agree again after a recalibration cycle (drain to ~15%, charge to full
+    // uninterrupted). "full-at" could rescale to 100 but hides real headroom,
+    // so it stays off.
     "bat": "bq27411-0",
     "format": "{icon} {capacity}%",
     "format-icons": ["\uf244", "\uf243", "\uf242", "\uf241", "\uf240"],
