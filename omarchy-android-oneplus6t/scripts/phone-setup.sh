@@ -143,8 +143,19 @@ ssh $PH 'sudo systemctl mask man-db.timer man-db.service plocate-updatedb.timer 
   printf "[Login]\nIdleAction=ignore\nHandleLidSwitch=ignore\nHandleSuspendKey=ignore\n" | sudo tee /etc/systemd/logind.conf.d/10-fajita-nosuspend.conf >/dev/null'
 
 echo "== screensaver effects engine (Omarchy ships ttfx for x86_64 only)"
-scp -q "$HERE/phone/ttfx" $PH:/tmp/ttfx
-ssh $PH 'sudo install -m755 /tmp/ttfx /usr/local/bin/ttfx'
+# Real Rust binary, committed for parity. Rebuild with build-ttfx.sh (needs
+# Docker on any host; arm64 container runs natively on Apple Silicon).
+# Never fall back to a Python shim: tte at 120fps saturates SDM845 and wedges
+# the session, and omarchy-screensaver's respawn loop multiplies it.
+if [ ! -x "$HERE/phone/ttfx-aarch64" ]; then
+  echo "phone/ttfx-aarch64 missing; building via build-ttfx.sh"
+  "$HERE/build-ttfx.sh"
+fi
+scp -q "$HERE/phone/ttfx-aarch64" $PH:/tmp/ttfx-aarch64
+ssh $PH 'sudo install -m755 /tmp/ttfx-aarch64 /usr/local/bin/ttfx
+  # verify before trusting: must run and exit, not hang
+  timeout 10 /usr/local/bin/ttfx --version || echo "WARN: ttfx --version rc=$?"
+  timeout 5 /usr/local/bin/ttfx -i ~/.config/omarchy/branding/screensaver.txt --random-effect --no-eol </dev/null >/dev/null 2>&1 || true'
 
 
 echo "== second bar row: clock under Omarchy's bar (the notch blocks the centre of row one)"

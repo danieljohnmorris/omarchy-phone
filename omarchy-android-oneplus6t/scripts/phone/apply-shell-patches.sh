@@ -290,6 +290,25 @@ else:
     print("patched menu osk gate")
 PY10
 
+
+# 11) Screensaver respawn loop: omarchy-screensaver's wait condition is scoped
+# to the launching tty (`pgrep -t "$tty" -x ttfx`). Launched without a
+# controlling tty (ssh, some launchers) the pgrep matches nothing, the inner
+# loop exits instantly and the outer `while true` respawns ttfx forever — the
+# load-229 wedge. ttfx only ever runs under the screensaver, so the tty filter
+# buys nothing: wait on any ttfx.
+S=/usr/bin/omarchy-screensaver
+sudo cp -n "$S" "$S.orig" 2>/dev/null || true
+sudo python3 - "$S" <<'PY11'
+import sys
+p = sys.argv[1]; s = open(p).read()
+old = '  while pgrep -t "${tty#/dev/}" -x ttfx >/dev/null; do\n'
+new = '  while pgrep -x ttfx >/dev/null; do\n'
+if new in s and old not in s:
+    print("screensaver wait already patched"); sys.exit(0)
+assert old in s, "screensaver wait anchor not found; upstream omarchy-screensaver changed"
+open(p, "w").write(s.replace(old, new, 1)); print("patched screensaver wait")
+PY11
 omarchy-restart-shell >/dev/null 2>&1 || true
 # the shell remaps its bar; restart the clock row so it lands beneath it again
 systemctl --user reset-failed waybar.service 2>/dev/null || true

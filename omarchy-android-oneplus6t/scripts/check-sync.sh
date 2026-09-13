@@ -103,7 +103,7 @@ while IFS=: read -r repo remote; do
 done <<< "$MAP"
 
 # root-owned files, fetched separately
-for pair in "phone/ttfx:/usr/local/bin/ttfx" "phone/gum:/usr/local/bin/gum" "phone/omarchy-theme-switcher:/usr/local/bin/omarchy-theme-switcher" "phone/proxy.sh:/etc/profile.d/proxy.sh" "phone/50-fajita-power.rules:/etc/polkit-1/rules.d/50-fajita-power.rules"; do
+for pair in "phone/ttfx-aarch64:/usr/local/bin/ttfx" "phone/gum:/usr/local/bin/gum" "phone/omarchy-theme-switcher:/usr/local/bin/omarchy-theme-switcher" "phone/proxy.sh:/etc/profile.d/proxy.sh" "phone/50-fajita-power.rules:/etc/polkit-1/rules.d/50-fajita-power.rules"; do
   repo=${pair%%:*}; remote=${pair#*:}
   if ssh -o ConnectTimeout=8 "$PH" "sudo -n tar -cf - $remote 2>/dev/null" | tar -xf - -C "$tmp" 2>/dev/null && [ -f "$tmp$remote" ]; then
     if diff -q "$HERE/$repo" "$tmp$remote" >/dev/null 2>&1; then same=$((same+1)); else

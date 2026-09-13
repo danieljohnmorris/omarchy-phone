@@ -22,6 +22,9 @@ what doesn't is at the bottom.
 - `scripts/build-hyprland.sh`: rebuilds Hyprland from the Arch PKGBUILD inside
   the chroot (ALARM's binary lags aquamarine's soname).
 - `scripts/build-qcom-services.sh`: pd-mapper, tqftpserv (linux-msm GitHub) and
+- `scripts/build-ttfx.sh`: compiles the Rust `ttfx` effects engine for aarch64
+  in an arm64 Docker container (native on Apple Silicon). Prerequisite: Docker
+  running on the build host.
   the sdm845-mainline ALSA UCM profiles. Wi-Fi does not appear without pd-mapper.
 - `scripts/flash.sh`: runs on the host. `unlock`, `boot-test` or `flash` via fastboot.
 - `scripts/phone-setup.sh`: Omarchy layer + phone adaptations over ssh.
@@ -305,9 +308,16 @@ Other phone-specific changes, applied by `phone-setup.sh`:
   the phone looks dead and ignores the power button.
 - Arch's `man-db`, `plocate-updatedb` and `shadow` timers are masked. They
   saturate the SDM845 for minutes after boot and read as a hang.
-- The screensaver's effects engine, `ttfx`, is x86_64-only upstream. A shim maps
-  it to `tte` from `python-terminaltexteffects` with the frame rate clamped, and
-  the screensaver ships disabled: the Python engine at 120fps wedges the phone.
+- The screensaver's effects engine, `ttfx`, is x86_64-only upstream (Omarchy
+  ships it in the x86_64 repo; the package is otherwise `any`). Upstream
+  publishes no aarch64 release, so `scripts/build-ttfx.sh` compiles the real
+  Rust binary (v0.3.2, github.com/omacom-io/ttfx) in an arm64 Docker container
+  on any host — native on Apple Silicon — against Debian bookworm's older
+  glibc so it runs on the phone's Arch. The binary is committed at
+  `scripts/phone/ttfx-aarch64` and installed to `/usr/local/bin/ttfx`
+  (check-sync tracks it). Do not substitute the Python `tte`: even clamped to
+  20fps it saturates the SDM845, and `omarchy-screensaver`'s respawn loop
+  multiplied it into hundreds of renderers that wedged the session.
 
 ### Cellular bring-up
 
