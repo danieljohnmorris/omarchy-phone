@@ -433,9 +433,13 @@ ShellRoot {
               // A layout decides this item's geometry, so the bubble must
               // publish implicit sizes: a plain `height` is overridden and the
               // rows collapse into each other with the text spilling out.
+              // Size against the flickable's column, the actual parent — the
+              // outer card is wider once its margins are in play. The cap is
+              // the layout's job; implicitWidth is the unwrapped text width,
+              // which the layout then clamps and the Text wraps into.
               Rectangle {
-                Layout.maximumWidth: col.width * 0.78
-                implicitWidth: Math.min(bubble.implicitWidth + 20, col.width * 0.78)
+                Layout.maximumWidth: convCol.width * 0.78
+                implicitWidth: bubble.implicitWidth + 20
                 implicitHeight: bubble.implicitHeight + stampText.implicitHeight + 18
                 radius: 8
                 color: msgRow.modelData.dir === "out" ? root.cAccent : root.cRow
