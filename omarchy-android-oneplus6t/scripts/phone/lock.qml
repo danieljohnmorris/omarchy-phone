@@ -49,7 +49,7 @@ ShellRoot {
       "BT=$(awk '/btime/{print $2}' /proc/stat); " +
       "cd $H 2>/dev/null || exit 0; " +
       "if [ $(date +%Y) = 1970 ]; then LIST=$(ls -1t | head -6); " +
-      "else LIST=$(find . -maxdepth 1 -type f -newermt @$BT -printf '%T@ %f\\n' 2>/dev/null | sort -rn | head -3 | cut -d' ' -f2-); fi; " +
+      "else LIST=$(find . -maxdepth 1 -type f -name '*.json' -newermt @$BT -printf '%T@ %f\\n' 2>/dev/null | sort -rn | head -3 | cut -d' ' -f2-); fi; " +
       "for f in $LIST; do " +
       "python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print((d.get(\"summary\") or d.get(\"body\") or \"\")[:60])' " +
       "\"$H/$f\" 2>/dev/null; done"]
