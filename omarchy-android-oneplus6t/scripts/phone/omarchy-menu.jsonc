@@ -22,7 +22,7 @@
   // Closing apps on touch: no titlebar buttons and hyprgrass is unavailable,
   // so the menu (reachable from the power key or top-left) is the close path.
   // Tap the app to focus it, then this row. Dispatcher form is the Lua-fluent
-  // one — this Hyprland evals dispatch args as Lua (see flipsplit above).
+  // one — this Hyprland evals dispatch args as Lua.
   "system.closeapp": {
     "icon": "󰅖",
     "label": "Close app",
@@ -31,13 +31,6 @@
     "action": "hyprctl dispatch 'hl.dsp.window.close()'"
   },
 
-  "system.flipsplit": {
-    "icon": "⇄",
-    "label": "Flip split",
-    "description": "Swap the two tiled halves",
-    "when": "true",
-    "action": "hyprctl dispatch 'hl.dsp.layout(\"swapsplit\")'"
-  },
   // Shutdown is hidden: a clean poweroff cannot be undone from the phone.
   // The power button will not cold-start it afterwards (OPH-16), so the row
   // was a one-way door with no on-device recovery. `when` is a shell test and
