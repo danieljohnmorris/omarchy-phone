@@ -469,6 +469,32 @@ power-key menu ("Calls", "Messages") or by the watcher on an event:
   `Voice_Call__Earpiece__sink` and `Voice_Call__Mic__source`.
 - `51-fajita-modem.rules` lets seatless callers (ssh, user units) run MM
   voice/messaging ops; without it every control call returns `Unauthorized`.
+- **`PartOf=` propagates stop but never start**, which silently disabled call
+  audio for an hour here. q6voiced was `PartOf=ModemManager.service`, so one
+  `systemctl restart ModemManager` (mine, for a QMI probe — an MM crash does it
+  too) stopped q6voiced and nothing ever brought it back; `Restart=on-failure`
+  does not fire on a clean dependency stop. It is now
+  `BindsTo=ModemManager.service` with `WantedBy=ModemManager.service`, so the
+  lifecycle is symmetric in both directions — verified by restarting, stopping
+  and starting MM and watching q6voiced follow each time.
+- The watcher is **event-driven**; its poll is only a safety net. A 5s
+  reconcile loop cost 2min 44s of CPU over 52min wall (~5% of a core, forever,
+  on a phone) because each tick forked `fajita-call list` — one mmcli for the
+  list plus one per call object — and an SMS sweep on top. It now reconciles on
+  `Modem.Voice.CallAdded`/`CallDeleted`, per-call `StateChanged` and
+  `Modem.Messaging.Added`, polls every 60s, sweeps SMS every 10 minutes, and
+  takes one list snapshot per reconcile instead of two: 223ms of CPU over 120s
+  (0.19% of a core), a 28x reduction. Latency is unaffected, so the poll really
+  is only a net: the profile reaches "Voice Call" 205ms after `--start` and
+  returns to `HiFi` 339ms after hangup.
+- Two measurement traps bit me here, both worth avoiding: read the cost as
+  `CPUUsageNSec` percent (`usec/10/seconds`) rather than hand arithmetic — I
+  misreported 0.26% as 26% — and trim `pactl`'s `Active Profile:` value before
+  comparing it, or a trailing space makes an already-correct profile look
+  stuck and sends you chasing a release path that was never broken.
+- `dbus-monitor` cannot use new-style monitoring here (`AccessDenied:
+  "Sender is not authorized"`) and falls back to eavesdropping. That warning in
+  the journal is expected; signals do arrive.
 
 mmcli contract, verified against the pinned MM tree (`d776ea38`), because
 guessing it wastes an afternoon:
@@ -515,6 +541,26 @@ iMessage. Over five minutes of watching, the modem exported no SMS object and
 nothing ever reached userspace to ingest. MT SMS on this operator rides IMS
 too. A SIM on an operator that still runs 2G/3G CS fallback is the only way to
 test either path end to end; everything above it is in place and waiting.
+
+Incoming calls were tested too, and fail one layer earlier than the dialer:
+the network never pages this device at all. A call to `07700900456` from
+another handset goes straight to voicemail, and on the phone there is no call
+object, no `Modem.Voice.CallAdded` signal and nothing in ModemManager's
+journal even at `mmcli -G DEBUG` — only the QMI indication `type = "LTE Voice
+Support" (0x21)`. That is the whole explanation in one line: LTE carries no
+circuit-switched voice by design, so a phone must register its ability to
+receive calls either in the CS domain (a VLR entry, via 2G/3G or an SGs
+association) or with IMS (a SIP REGISTER over the data bearer). This stack does
+neither, so the HSS holds no route to it, the network treats it exactly like a
+switched-off phone, and unconditional-on-unreachable diversion answers with
+voicemail. Nothing on the device can be fixed to change that.
+
+Which SIM would work, then: one on an operator that still runs a
+circuit-switched radio, so the modem can CS-attach and ModemManager's dial
+works unchanged. In the UK that means EE, Vodafone or O2 (and their MVNOs),
+which kept 2G after switching 3G off; Three never ran 2G and shut 3G down in
+December 2024, which is why this particular SIM is the worst case. Operators
+that retired both (most of the US) are VoLTE-only and equally unreachable.
 
 Beware one iMessage trap when testing: an iPhone addressing this number may
 send blue (iMessage over IP, never touching the modem). The bubble must be
@@ -576,12 +622,15 @@ the live and never-connected cases, the store drives the conversation UI, and
 flipping to the UCM "Voice Call" profile exposes the earpiece sink and call
 mic. Inbound SMS was tested with a second handset and never arrives: the modem
 exports no object and MM emits no `Messaging.Added` signal, so the ingest path
-has only been exercised against a stubbed `received` object. Also never
+has only been exercised against a stubbed `received` object. An inbound *call*
+was tested the same way and goes to voicemail with no `CallAdded` and nothing
+in MM's journal at DEBUG: the network never pages this device. Also never
 observed: audio through a connected call.
 
 Not working: calls and SMS *over the air* on this SIM — Three UK is VoLTE-only
-and there is no IMS stack on mainline sdm845, so the network refuses the CS
-dial and the SMS submit (see "Calls and SMS"). Bluetooth (firmware loads, HCI
+and there is no IMS stack on mainline sdm845, so the phone registers in neither
+the CS domain nor IMS, outgoing attempts are refused and incoming ones never
+reach it (see "Calls and SMS"). Bluetooth (firmware loads, HCI
 reset times out). I haven't tried the camera or sensors.
 
 Tested only on a OnePlus 6T (fajita) with Omarchy 4.0.2 and Hyprland 0.56.2.

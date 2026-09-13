@@ -11,8 +11,9 @@
 #   3. Ingest incoming SMS into the fajita-sms store (modem storage is then
 #      emptied), raise messages.qml, notify once per object path.
 #
-# Reconcile is idempotent and driven by BOTH dbus events and a 5s poll, so a
-# missed signal (monitor restart, MM reload) self-heals.
+# Reconcile is idempotent. DBus signals are the mechanism; a 60s poll (plus a
+# 10-minute SMS sweep) is only a safety net for a missed signal, so an idle
+# phone is not woken twelve times a minute.
 set -uo pipefail
 
 export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
@@ -21,18 +22,22 @@ UI_CALLS="$HOME/.config/fajita/calls.qml"
 UI_MESSAGES="$HOME/.config/fajita/messages.qml"
 declare -A notified   # call/SMS path -> 1, so one notify per object
 
-# True when any existing call needs the call-audio path. Matches q6voiced's
-# own predicate (dialing/ringing-out/active) plus the inbound pair: incoming
-# calls flip the profile only once accepted, but 'waiting' and 'held' calls
-# may return to active, and MM reports accepted-incoming as active anyway.
-call_audio_needed() {
+# True when any call in the snapshot needs the call-audio path. Matches
+# q6voiced's own predicate (dialing/ringing-out/active) plus the inbound pair:
+# incoming calls flip the profile only once accepted, but 'waiting' and 'held'
+# calls may return to active, and MM reports accepted-incoming as active anyway.
+#
+# Takes the snapshot as an argument: `fajita-call list` spawns one mmcli for
+# the list plus one per call object, so reconciling from two separate runs
+# doubled the fork count every tick for no new information.
+call_audio_needed() { # $1 = `fajita-call list` output
   local path state
   while IFS='|' read -r path state _dir _num; do
     [ -n "$path" ] || continue
     case "$state" in
       dialing|ringing-out|ringingout|active|held|waiting) return 0 ;;
     esac
-  done < <(fajita-call list 2>/dev/null)
+  done <<< "$1"
   return 1
 }
 
@@ -42,10 +47,11 @@ raise() { # $1 = qml path, $2 = ipc target — ipc wins, spawn if none running
 }
 
 reconcile() {
+  local calls want cur path state number
+  calls=$(fajita-call list 2>/dev/null)
+
   # --- profile flip ---
-  local want
-  if call_audio_needed; then want="Voice Call"; else want="HiFi"; fi
-  local cur
+  if call_audio_needed "$calls"; then want="Voice Call"; else want="HiFi"; fi
   cur=$(pactl list cards 2>/dev/null | awk -v c="$CARD" '
     $1 == "Name:" { n = $2 }
     /Active Profile:/ && n == c { $1 = $2 = ""; gsub(/^[ :]+|[ :]+$/, ""); print; exit }')
@@ -67,7 +73,7 @@ reconcile() {
         fi
         ;;
     esac
-  done < <(fajita-call list 2>/dev/null)
+  done <<< "$calls"
 
   # --- prune per-call notified entries whose objects are gone ---
   local p
@@ -139,13 +145,25 @@ while IFS=' ' read -r ev path recv; do
 done &
 
 
-# Fallback poll: heals anything the event stream missed (monitor restart,
-# MM crash-reload) and re-syncs the profile + notifications every cycle.
+# Startup catch-up: the event stream only reports what happens from now on, so
+# sync the profile once and drain anything the modem stored while we were down.
+reconcile
+fajita-sms sweep >/dev/null 2>&1 || true
+
+# Safety net, deliberately slow. The dbus event path above is the mechanism and
+# it is known to work (Modem.Voice/Call/Messaging signals all arrive, via the
+# eavesdrop fallback); this only heals a missed signal after a monitor restart
+# or an MM crash-reload. At the original 5s it forked two mmcli per cycle, 12
+# times a minute, forever: ~5% CPU measured over an hour (2min 44s over 52min)
+# on a phone that spends its life idle waiting for a call.
+i=0
 while :; do
+  sleep 60
   reconcile
-  # SMS Added signals can be missed too: sweep any objects still on the modem.
-  fajita-sms sweep >/dev/null 2>&1 || true
-  sleep 5
+  # An Added signal can be missed too, but an SMS sitting in modem storage is
+  # not urgent and the sweep costs an extra mmcli, so run it far less often.
+  i=$(( (i + 1) % 10 ))
+  [ "$i" -eq 0 ] && { fajita-sms sweep >/dev/null 2>&1 || true; }
 done &
 
 trap 'kill "$(jobs -p)" 2>/dev/null; exit 0' TERM INT

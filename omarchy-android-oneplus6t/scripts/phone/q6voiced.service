@@ -2,7 +2,11 @@
 Description=Voice call audio daemon (q6voiced, postmarketOS)
 Documentation=https://gitlab.com/postmarketOS/q6voiced
 After=ModemManager.service
-PartOf=ModemManager.service
+# BindsTo + WantedBy=ModemManager.service, deliberately, so the lifecycle is
+# symmetric: q6voiced dies with MM (its DBus signal source) and comes back when
+# MM does. PartOf alone propagates only *stop*, so one `systemctl restart
+# ModemManager` (or an MM crash) left call audio silently dead until reboot.
+BindsTo=ModemManager.service
 
 [Service]
 Type=simple
@@ -16,4 +20,4 @@ Restart=on-failure
 RestartSec=2
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=ModemManager.service
