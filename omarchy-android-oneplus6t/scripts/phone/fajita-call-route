@@ -75,6 +75,22 @@ reassert_mute() {
   [ -f "$MIC" ] && mic_gate off
   return 0
 }
+# Bottom-mic codec chain (ADC4 -> AMIC MUX7 -> ADC MUX7 -> DEC7), asserted by
+# the earpiece/speaker arms. Nothing in a normal call zeroes it (verified
+# across call start, hangup and both profile flips), but an external cset --
+# the UCM Mic DisableSequence, or a debugging session -- leaves the decimator
+# sourceless while DEC7 still reads 84, i.e. "unmuted" with a dead mic. Only
+# written when wrong: a redundant mux write can cost a TX7 underflow.
+mic_chain() {
+  cxq 'AMIC MUX7' ADC4 4
+  cxq 'ADC MUX7'  AMIC 1
+}
+# cset only when the read-back differs. $3 is the numeric form of $2, which is
+# what cget prints for an enum.
+cxq() { # control value numeric
+  [ "$(amixer -c0 cget name="'$1'" 2>/dev/null |
+        sed -n 's/.*: values=//p')" = "$3" ] || cx "$1" "$2"
+}
 # Only write an AFE capture mixer when the value actually changes: an
 # off->on->off churn tears TX port 7 down (see above), and the arms re-assert
 # these on every switch.
@@ -112,6 +128,7 @@ case "${1:-query}" in
     vx  SLIMBUS_1_RX off; vx QUAT_MI2S_RX off; hp_off
     amp_profile MUSIC_48000
     capq SLIMBUS_0_TX on;  capq SLIMBUS_2_TX off
+    mic_chain
     reassert_mute
     ;;
   speaker)
@@ -127,6 +144,7 @@ case "${1:-query}" in
     vx  SLIMBUS_0_RX off; vx SLIMBUS_1_RX off; hp_off
     cx 'RX INT0_1 MIX1 INP0' ZERO
     capq SLIMBUS_0_TX on;  capq SLIMBUS_2_TX off
+    mic_chain
     reassert_mute
     ;;
   headset)
