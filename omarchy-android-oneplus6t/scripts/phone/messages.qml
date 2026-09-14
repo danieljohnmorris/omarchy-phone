@@ -196,10 +196,17 @@ ShellRoot {
     if (!root.target || !root.draft || root.sending) return
     root.lastError = ""
     root.sending = true
+    // Wire form is what the user typed (only whitespace/punctuation stripped);
+    // every send that this network has accepted used the dialled national
+    // form, so canon() is kept off the mmcli argument. The store is still
+    // canonical: fajita-sms' append() canonicalises on the way in.
+    var wire = root.screen === "new"
+      ? root.toField.replace(/[ ()-]/g, "")
+      : root.thread
     root.thread = root.target
     root.screen = "thread"
     sendProc.command = ["bash", "-lc",
-      "fajita-sms send " + root.sq(root.target) + " " + root.sq(root.draft)]
+      "fajita-sms send " + root.sq(wire) + " " + root.sq(root.draft)]
     sendProc.running = true
   }
 
