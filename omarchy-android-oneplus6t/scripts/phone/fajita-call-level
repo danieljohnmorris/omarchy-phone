@@ -1,0 +1,51 @@
+#!/bin/bash
+# Mic level meter for a live call: prints one 0-100 value per 0.5s on stdout,
+# consumed by calls.qml's opt-in level strip. dB-scaled: 0 = -60 dBFS or
+# quieter, 100 = full scale — linear RMS saturates (speech runs in the
+# thousands on this mic, so min(100, rms/3) pegged every bar at max).
+#
+# OPT-IN on purpose: this capture opens hw:0,1 (MultiMedia2), which shares
+# SLIM TX7 with the voice uplink. It contaminates clean-call audio testing and
+# its close is what logs "Port Closed TX port 7" and can tear the shared path —
+# so calls.qml only runs it while the user has the level strip enabled.
+#
+# Teardown: the script execs python, so whatever SIGTERMs it reaches python
+# directly, and python's handler kills its arecord child. No process-group
+# signals (a non-interactive child shares the app's group; `kill 0` would take
+# the calls app down with it), and an orphaned arecord holding hw:0,1 would
+# block every later capture.
+set -uo pipefail
+exec 2>/dev/null
+exec python3 -u -c '
+import math, signal, struct, subprocess, sys
+
+arecord = subprocess.Popen(
+    ["arecord", "-D", "hw:0,1", "-f", "S16_LE", "-r", "16000", "-c", "1"],
+    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+
+def cleanup(_sig=None, _frm=None):
+    arecord.kill()
+    sys.exit(0)
+
+signal.signal(signal.SIGTERM, cleanup)
+signal.signal(signal.SIGINT, cleanup)
+try:
+    while True:
+        b = arecord.stdout.read(16000)  # 0.5s: 16 kHz mono S16
+        if not b:
+            break
+        n = len(b) // 2
+        if n == 0:
+            continue
+        v = [x if x < 32768 else x - 65536
+             for x in struct.unpack("<%dh" % n, b[:n * 2])]
+        rms = (sum(x * x for x in v) / n) ** 0.5
+        if rms <= 0:
+            print(0)
+        else:
+            db = 20 * math.log10(rms / 32768.0)
+            print(max(0, min(100, round((db + 60) / 60 * 100))))
+        sys.stdout.flush()
+finally:
+    cleanup()
+'

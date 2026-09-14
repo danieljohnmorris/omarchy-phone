@@ -21,6 +21,7 @@ export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
 CARD="alsa_card.platform-sound"
 declare -A notified   # call/SMS path -> 1, so one notify per object
 CALLLOG="$HOME/.local/state/fajita/calls.jsonl"
+ACTIVE="$HOME/.local/state/fajita/call-active"
 # Per-call bookkeeping for the log line written when the object vanishes:
 # first-seen time, direction, number, and when it first went active.
 declare -A c_t0 c_dir c_num c_ans
@@ -108,6 +109,16 @@ reconcile() {
         ;;
     esac
   done <<< "$calls"
+
+  # --- active-since epochs, so a respawned calls.qml restores live durations ---
+  # Its callStart map is in-process and starts empty; without this file a
+  # redeploy mid-call restarts the timer at 0:00.
+  local af="" p2
+  for p2 in $live; do
+    [ -n "${c_ans[$p2]:-}" ] && af+="$p2|${c_ans[$p2]}"$'\n'
+  done
+  if [ -n "$af" ]; then printf '%s' "$af" > "$ACTIVE"
+  else rm -f "$ACTIVE"; fi
 
   # --- prune per-call bookkeeping whose objects are gone; log ended calls ---
   # `fajita-call list` reaps terminated calls itself, so a vanished path means

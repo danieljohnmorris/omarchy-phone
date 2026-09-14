@@ -4,11 +4,15 @@
 #   fajita-call-audio-diag NUMBER        # outbound call, sampled till it ends
 #   fajita-call-audio-diag --sample      # just sample whatever call is running
 #
-# The decisive routing state is sampled per-tick while the call is up: after
-# teardown the watcher flips back to HiFi and the end dump reads HiFi-era
-# values. While active you want: verb=Voice_Call, vrx/vtx=1 (the verb's own
-# EnableSequence), inp0=RX0 and adcmux7=AMIC amicmux7=ADC4 (the Earpiece/Mic
-# SectionDevices). ZERO/blank there = verb applied but devices never enabled.
+# The routing state that matters is sampled per-tick while the call is up:
+# after teardown the watcher flips back to HiFi and the end dump reads
+# HiFi-era values. While active you want vrx/vtx=on (the Voice Call verb's
+# own EnableSequence), inp0=RX0 and adcmux7=AMIC amicmux7=ADC4 (the
+# Earpiece/Mic SectionDevices). ZERO/blank there = verb applied but devices
+# never enabled. The applied verb itself is NOT queryable: alsaucm's current
+# verb is per-manager-instance state, so no fresh CLI can see what PipeWire's
+# manager set — pactl's Active Profile (in every tick line) is the authority
+# PipeWire actually acts on.
 #
 # PCM state/pointers are telemetry only: q6voiced opens+prepares but never
 # writes (hostless link), so static pointers do not prove failure. FE_OPEN
@@ -65,10 +69,7 @@ sample() { # sets: line, n_calls, p_state p_dp, c_state c_dc
   line="$(date +%H:%M:%S) calls=$n_calls pcm6p=${p_state}/+${p_dp} pcm6c=${c_state}/+${c_dc} profile=${prof:-?} rate=$rate $verdict"
 
   if [ "$n_calls" -gt 0 ]; then
-    local v
-    v=$(alsaucm -c 0 get _verb 2>/dev/null || alsaucm -c O6T get _verb 2>/dev/null)
-    v=${v##*: }; v=${v//[[:space:]]/_}; v=${v:-none}
-    line="$line verb=$v vrx=$(cval 'SLIMBUS_0_RX Voice Mixer VoiceMMode1') vtx=$(cval 'VoiceMMode1 Capture Mixer SLIMBUS_0_TX') inp0=$(cval 'RX INT0_1 MIX1 INP0') adcmux7=$(cval 'ADC MUX7') amicmux7=$(cval 'AMIC MUX7')"
+    line="$line vrx=$(cval 'SLIMBUS_0_RX Voice Mixer VoiceMMode1') vtx=$(cval 'VoiceMMode1 Capture Mixer SLIMBUS_0_TX') inp0=$(cval 'RX INT0_1 MIX1 INP0') adcmux7=$(cval 'ADC MUX7') amicmux7=$(cval 'AMIC MUX7')"
   fi
 }
 
@@ -102,13 +103,9 @@ while :; do
 done
 
 echo "== FE telemetry: ${best:-none} (FE_OPEN+ expected while a call runs) =="
-echo "== end dump runs AFTER teardown (profile/verb read HiFi-era here; the"
+echo "== end dump runs AFTER teardown (the profile below reads HiFi-era; the"
 echo "   per-tick lines above are the during-call evidence) =="
-echo "== available UCM verbs (the applied one is NOT queryable: alsaucm's verb"
-echo "   is per-connection state, so a fresh CLI cannot see what PipeWire set;"
-echo "   the csets below are the real kernel state instead) =="
-alsaucm -c 0 list _verbs 2>/dev/null || true
-echo "== the two q6voice routing csets (must be on:1) =="
+echo "== the two q6voice routing csets (kernel state; must be on) =="
 for c in 'SLIMBUS_0_RX Voice Mixer VoiceMMode1' 'VoiceMMode1 Capture Mixer SLIMBUS_0_TX'; do
   amixer -c0 cget "name='$c'" 2>/dev/null | grep -E "numid|: values" | tr '\n' ' '; echo
 done

@@ -65,6 +65,7 @@ phone/fajita-call-watch:.local/bin/fajita-call-watch
 phone/fajita-call-audio-diag:.local/bin/fajita-call-audio-diag
 phone/fajita-osk-show:.local/bin/fajita-osk-show
 phone/fajita-call-route:.local/bin/fajita-call-route
+phone/fajita-call-level:.local/bin/fajita-call-level
 phone/fajita-call-watch.service:.config/systemd/user/fajita-call-watch.service
 phone/fajita-lock-screen:.local/bin/fajita-lock-screen
 phone/plugins/fajita.cellular/manifest.json:.config/omarchy/plugins/fajita.cellular/manifest.json
