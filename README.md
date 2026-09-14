@@ -12,7 +12,7 @@ phone, and the patches that make a desktop shell work with a finger.
 
 | Folder | Device | Where it got to |
 |---|---|---|
-| [`omarchy-android-oneplus6t`](omarchy-android-oneplus6t) | OnePlus 6T (fajita), Snapdragon 845 | Boots on its own into Omarchy 4. Bar, menu, on-screen keyboard, terminal, GPU, audio, Wi-Fi all work. Bluetooth, lock screen and cellular don't. |
+| [`omarchy-android-oneplus6t`](omarchy-android-oneplus6t) | OnePlus 6T (fajita), Snapdragon 845 | Boots on its own into Omarchy 4. Bar, menu, on-screen keyboard, terminal, GPU, audio, Wi-Fi, mobile data, SMS and a lock screen work; calls connect with audio unproven. Bluetooth doesn't. |
 
 ## Omarchy on ARM
 
@@ -39,9 +39,10 @@ all three on any phone.
   click-catcher counted the first tap on the on-screen keyboard as a click
   outside itself and closed.
 - **Anything compiled is missing.** The screensaver needs `ttfx`, a Rust rewrite
-  Omarchy builds for x86_64. I swapped in the Python original it was ported from.
-  It runs, but not at 120fps: at Omarchy's default it saturated the CPU and hung
-  the phone.
+  Omarchy publishes for x86_64 only. The Python original it was ported from ran,
+  but at Omarchy's default 120fps it saturated the CPU and hung the phone, so
+  `build-ttfx.sh` compiles the Rust engine for aarch64 and the binary is
+  committed at `scripts/phone/ttfx-aarch64`.
 - **Phone hardware.** The notch sits where the clock goes, so the time was
   unreadable until I moved it to a second bar row. Suspend never resumes, which
   looks exactly like a dead phone. There's no real-time clock, so every boot

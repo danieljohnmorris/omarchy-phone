@@ -14,7 +14,3 @@ ttf-ia-writer
 ttf-jetbrains-mono-nerd-basic
 xdg-terminal-exec
 yaru-icon-theme
-# Screensaver effects engine. Omarchy's own ttfx is a Rust rewrite built for
-# x86_64 only; this is the Python original it was ported from, and
-# scripts/phone/ttfx maps ttfx onto it.
-python-terminaltexteffects
