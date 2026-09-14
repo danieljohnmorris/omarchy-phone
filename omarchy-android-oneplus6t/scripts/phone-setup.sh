@@ -229,13 +229,17 @@ ssh $PH 'sudo install -m644 -o root -g root /tmp/51-fajita-modem.rules /etc/polk
 # webapp entries, but not necessarily on a from-scratch run, and scp will not
 # create it.
 ssh $PH 'mkdir -p ~/.local/bin ~/.config/fajita ~/.config/systemd/user ~/.local/share/applications ~/.local/state/fajita'
-scp -q "$HERE/phone/fajita-call" "$HERE/phone/fajita-sms" "$HERE/phone/fajita-call-watch" $PH:.local/bin/
+# fajita-app is the single launch path for the menu rows, the .desktop entries
+# and the watcher: it verifies a window actually maps instead of trusting an
+# `ipc call … show`, which a windowless instance left by a shell restart
+# answers happily while nothing appears.
+scp -q "$HERE/phone/fajita-call" "$HERE/phone/fajita-sms" "$HERE/phone/fajita-call-watch" "$HERE/phone/fajita-app" $PH:.local/bin/
 scp -q "$HERE/phone/calls.qml" "$HERE/phone/messages.qml" $PH:.config/fajita/
 scp -q "$HERE/phone/fajita-call-watch.service" $PH:.config/systemd/user/
 # Desktop entries so both apps appear in the Apps menu ("launch something" on
 # the empty-workspace hint, or the bar icon), not only in the power-key menu.
 scp -q "$HERE/phone/calls.desktop" "$HERE/phone/messages.desktop" $PH:.local/share/applications/
-ssh $PH 'chmod +x ~/.local/bin/fajita-call ~/.local/bin/fajita-sms ~/.local/bin/fajita-call-watch
+ssh $PH 'chmod +x ~/.local/bin/fajita-call ~/.local/bin/fajita-sms ~/.local/bin/fajita-call-watch ~/.local/bin/fajita-app
   mkdir -p ~/.local/state/fajita
   systemctl --user daemon-reload
   systemctl --user enable --now fajita-call-watch.service'

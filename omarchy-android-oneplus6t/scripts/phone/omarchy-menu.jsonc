@@ -51,19 +51,22 @@
   },
   // Calls and Messages: standalone Quickshell apps under ~/.config/fajita,
   // launched as normal windows so they tile (two open = 50/50) and the OSK
-  // can raise itself over a focused text field. ipc-first, spawn as fallback
-  // — the same shape apply-shell-patches.sh uses for the notification centre.
+  // can raise itself over a focused text field. fajita-app does the launching
+  // for every entry point (these rows, the .desktop files, the watcher): it
+  // focuses an existing window and otherwise verifies a fresh one maps, since
+  // a bare `ipc call … show` is answered by a windowless instance left over
+  // from a shell restart and then nothing appears at all.
   "system.calls": {
     "icon": "󰎠",
     "label": "Calls",
     "description": "Dialer and live calls",
-    "action": "quickshell -p $HOME/.config/fajita/calls.qml ipc call fajita-calls show 2>/dev/null || quickshell -p $HOME/.config/fajita/calls.qml"
+    "action": "fajita-app calls"
   },
   "system.messages": {
     "icon": "󰍡",
     "label": "Messages",
     "description": "SMS conversations",
-    "action": "quickshell -p $HOME/.config/fajita/messages.qml ipc call fajita-messages show 2>/dev/null || quickshell -p $HOME/.config/fajita/messages.qml"
+    "action": "fajita-app messages"
   },
   "system.bootloader": {
     "icon": "󰚥",

@@ -473,11 +473,18 @@ power-key menu ("Calls", "Messages") or by the watcher on an event:
   the card sits on `Voice Call`, and both return to `closed` after hangup. So
   the kernel q6voice FE and the UCM backend work; only the modem's own
   downlink/uplink stream is missing, because the call never connects.
-- The watcher's `raise()` is ipc-first, spawn-as-fallback (the shape
-  `apply-shell-patches.sh` uses). Both branches are verified: with nothing
-  running the fallback spawns the window; with an instance up,
-  `ipc call fajita-messages open +44…` navigates the existing process straight
-  to that conversation and never starts a second one.
+- **`ipc call … show || spawn` is not a launcher: a Quickshell process outlives
+  the compositor.** After an overnight shell restart the `messages.qml`
+  instance was still running with every Wayland fd closed
+  (`ls /proc/$pid/fd | grep -c wayland` → 0), so it could never map a window
+  again — but it still owned the `fajita-messages` IPC socket. `ipc call show`
+  therefore *succeeded*, the `||` fallback never ran, and tapping the row did
+  nothing at all. `fajita-app calls|messages` is now the single launch path for
+  the menu rows, the `.desktop` entries and the watcher: it focuses an existing
+  *mapped* window (matched on `hyprctl clients` title), otherwise reaps any
+  instance matching `quickshell -p <that qml>` and respawns under `setsid`,
+  waiting until the window really appears. It forwards ipc args too, so
+  `fajita-app messages open +44…` still lands on that conversation.
 - `51-fajita-modem.rules` lets seatless callers (ssh, user units) run MM
   voice/messaging ops; without it every control call returns `Unauthorized`.
 - **`PartOf=` propagates stop but never start**, which silently disabled call

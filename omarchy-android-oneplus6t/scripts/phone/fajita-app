@@ -1,0 +1,69 @@
+#!/bin/bash
+# Launch (or focus) one of the standalone Quickshell apps under ~/.config/fajita.
+#   fajita-app calls | messages [ipc-args...]
+#
+# Why this is not just `ipc call … show || quickshell -p …`: a Quickshell process
+# outlives the compositor. After a shell restart the old instance keeps running
+# with its Wayland fds closed (`ls /proc/PID/fd | grep -c wayland` -> 0), so it
+# can never map a window again — but it still owns the IPC socket. `ipc call`
+# then succeeds against that corpse, the `||` fallback never fires, and tapping
+# the row looks like the app hangs with nothing on screen.
+#
+# So verify the outcome (a mapped window), not the call: focus an existing
+# window, else try IPC, else reap the stale process and spawn a fresh one.
+set -uo pipefail
+
+app=${1:-}
+case "$app" in
+  calls)    target=fajita-calls;    title=calls ;;
+  messages) target=fajita-messages; title=messages ;;
+  *) echo "usage: fajita-app calls|messages [ipc-args...]" >&2; exit 2 ;;
+esac
+shift
+QML="$HOME/.config/fajita/$app.qml"
+
+export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+if [ -z "${WAYLAND_DISPLAY:-}" ]; then
+  for s in "$XDG_RUNTIME_DIR"/wayland-[0-9]*; do
+    case "$s" in *.lock) continue ;; esac
+    [ -S "$s" ] && { WAYLAND_DISPLAY=${s##*/}; break; }
+  done
+fi
+export WAYLAND_DISPLAY
+if [ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
+  for d in "$XDG_RUNTIME_DIR"/hypr/*; do
+    [ -d "$d" ] && { HYPRLAND_INSTANCE_SIGNATURE=${d##*/}; break; }
+  done
+fi
+export HYPRLAND_INSTANCE_SIGNATURE
+
+mapped() { hyprctl clients 2>/dev/null | grep -q "title: $title$"; }
+
+# Already on screen: focus it (and still forward any ipc args, e.g. `open +44…`).
+if mapped; then
+  [ $# -gt 0 ] && quickshell -p "$QML" ipc call "$target" "$@" >/dev/null 2>&1
+  hyprctl dispatch focuswindow "title:^${title}$" >/dev/null 2>&1
+  exit 0
+fi
+
+# A live instance answers IPC and maps within a second or so.
+if quickshell -p "$QML" ipc call "$target" "${@:-show}" >/dev/null 2>&1; then
+  for _ in 1 2 3 4 5 6; do
+    mapped && exit 0
+    sleep 0.25
+  done
+fi
+
+# IPC answered by a windowless corpse (or nothing is running): reap and respawn.
+# Match on the QML path so this never touches the Omarchy shell or the other app.
+pkill -f "quickshell -p $QML" 2>/dev/null
+sleep 0.3
+setsid quickshell -p "$QML" >/dev/null 2>&1 &
+for _ in $(seq 1 40); do
+  mapped && break
+  sleep 0.25
+done
+# Late navigation: the fresh instance shows its default screen first.
+[ $# -gt 0 ] && [ "${1:-}" != show ] &&
+  quickshell -p "$QML" ipc call "$target" "$@" >/dev/null 2>&1
+exit 0

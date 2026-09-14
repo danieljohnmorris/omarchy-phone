@@ -58,6 +58,7 @@ phone/calls.qml:.config/fajita/calls.qml
 phone/messages.qml:.config/fajita/messages.qml
 phone/calls.desktop:.local/share/applications/calls.desktop
 phone/messages.desktop:.local/share/applications/messages.desktop
+phone/fajita-app:.local/bin/fajita-app
 phone/fajita-call:.local/bin/fajita-call
 phone/fajita-sms:.local/bin/fajita-sms
 phone/fajita-call-watch:.local/bin/fajita-call-watch
