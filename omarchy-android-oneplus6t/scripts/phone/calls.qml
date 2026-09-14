@@ -85,9 +85,24 @@ ShellRoot {
   }
   Component.onCompleted: root.toggle() // first spawn: show + rescan immediately
 
-  function run(cmd) { // fire-and-forget; errors surface via lastError
+  // Fire-and-forget runner. Process refuses a command change while running,
+  // so overlapping actions (fast mute -> unmute, route re-taps) must queue or
+  // the later one is silently dropped. Errors surface via lastError.
+  property var cmdQueue: []
+  function run(cmd) {
     root.lastError = ""
-    proc.command = ["bash", "-lc", cmd]
+    root.cmdQueue = root.cmdQueue.concat([cmd])
+    root.drainQueue() // no-op while busy; onExited drains the rest in order
+  }
+  // Drain one queued command. Called via Qt.callLater from onExited so the
+  // Process has actually gone idle: assigning running=true while it is still
+  // true is a no-op, so a drain that lands early must leave the queue intact
+  // and let the next run()/exit retry it rather than dropping the command.
+  function drainQueue() {
+    if (proc.running || root.cmdQueue.length === 0) return
+    var next = root.cmdQueue[0]
+    root.cmdQueue = root.cmdQueue.slice(1)
+    proc.command = ["bash", "-lc", next]
     proc.running = true
   }
 
@@ -97,6 +112,13 @@ ShellRoot {
   function setRoute(r) {
     root.callRoute = r
     root.run("fajita-call-route " + r)
+  }
+
+  // Uplink gate. Optimistic label flip, then the command; proc.onExited
+  // re-queries the mixer so the label ends on kernel truth either way.
+  function setMic(muted) {
+    root.micMuted = muted
+    root.run("fajita-call-route mic " + (muted ? "off" : "on"))
   }
 
   // Panel-style history painter (same shape as fajita.cellular Panel.qml):
@@ -164,6 +186,11 @@ ShellRoot {
     // resolved colors.toml inode, which theme-set replaces, so a live window
     // repaints via IPC rather than waiting for the file watcher that never fires.
     function retint(): void { colors.reload() }
+    // Mic gate from outside the UI (keybind/CLI), so the button label and the
+    // kernel gate cannot diverge: "on"/"off" mirror fajita-call-route mic.
+    function mic(state: string): void {
+      root.setMic(state === "off" || state === "mute" || state === "muted")
+    }
   }
 
   // Common runner for actions (start/accept/hangup).
@@ -175,7 +202,11 @@ ShellRoot {
     stderr: SplitParser {
       onRead: data => { if (data.trim()) root.lastError = data.trim() }
     }
-    onExited: rescan.running = true // reflect the new call state immediately
+    onExited: {
+      rescan.running = true // reflect the new call state immediately
+      if (root.cmdQueue.length > 0) Qt.callLater(root.drainQueue) // running flips after this signal
+      else micQuery.running = true // last action settled: label follows the mixer
+    }
   }
 
   // Long-press dial paste: pull a dialable string off the clipboard. The
@@ -303,6 +334,9 @@ ShellRoot {
       onRead: data => {
         var n = parseInt(data.trim(), 10)
         if (isNaN(n)) return
+        // Muted: the network hears nothing, so the graph must too — pin the
+        // sample to zero instead of drawing your (still-captured) voice.
+        if (root.micMuted) n = 0
         var t = root.micHist.concat([n])
         if (t.length > root.graphPoints) t = t.slice(t.length - root.graphPoints)
         root.micHist = t
@@ -432,26 +466,29 @@ ShellRoot {
           Layout.fillWidth: true
           spacing: 4
 
-          // "you" label + capture toggle sit directly above the mic graph.
+          // "you" label + meter toggle sit directly above the mic graph.
+          // "meter" toggles only the capture feeding the graph; muting is
+          // the separate "mute mic" button below — two controls, one label
+          // each, so they cannot be mistaken for each other.
           RowLayout {
             Layout.fillWidth: true
             spacing: 6
             Text {
-              text: "you"
-              color: root.levelOn ? root.cGreen : root.cMuted
+              text: root.micMuted ? "you (muted)" : "you"
+              color: root.micMuted ? root.cRed : (root.levelOn ? root.cGreen : root.cMuted)
               font.family: "JetBrainsMono Nerd Font"
-              font.pixelSize: 10
+              font.pixelSize: 11
             }
             Rectangle {
               id: levelChip
               Layout.preferredWidth: levelLbl.implicitWidth + 20
-              Layout.preferredHeight: 22
+              Layout.preferredHeight: 24
               radius: 6
               color: root.levelOn ? root.cAccent : root.cRow
               Text {
                 id: levelLbl
                 anchors.centerIn: parent
-                text: root.levelOn ? "mic on" : "mic off"
+                text: root.levelOn ? "meter ✓" : "meter"
                 color: root.levelOn ? root.cBg : root.cMuted
                 font.family: "JetBrainsMono Nerd Font"
                 font.pixelSize: 10
@@ -467,11 +504,11 @@ ShellRoot {
           Canvas {
             id: micGraph
             Layout.fillWidth: true
-            Layout.preferredHeight: 34
+            Layout.preferredHeight: 110
             onWidthChanged: requestPaint()
             onHeightChanged: requestPaint()
             onPaint: root.paintSeries(this, root.micHist, 100,
-              root.levelOn ? String(root.cGreen) : String(root.cMuted))
+              (root.levelOn && !root.micMuted) ? String(root.cGreen) : String(root.cMuted))
           }
 
           // "them" label above its own graph, then the verdict caption: a
@@ -487,7 +524,7 @@ ShellRoot {
           Canvas {
             id: sessGraph
             Layout.fillWidth: true
-            Layout.preferredHeight: 34
+            Layout.preferredHeight: 110
             onWidthChanged: requestPaint()
             onHeightChanged: requestPaint()
             onPaint: root.paintSeries(this, root.sessHist, 1, String(root.cAccent))
@@ -625,8 +662,8 @@ ShellRoot {
               MouseArea {
                 anchors.fill: parent
                 onClicked: {
-                  root.micMuted = !root.micMuted
-                  root.run("fajita-call-route mic " + (root.micMuted ? "off" : "on"))
+                  root.setMic(!root.micMuted)
+                  micGraph.requestPaint() // color flips now, not on next sample
                 }
               }
             }

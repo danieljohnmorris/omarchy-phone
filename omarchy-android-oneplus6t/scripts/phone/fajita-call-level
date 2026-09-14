@@ -19,6 +19,11 @@ exec 2>/dev/null
 exec python3 -u -c '
 import math, signal, struct, subprocess, sys
 
+# Self-heal: a SIGKILLed parent (QProcess stop) orphans arecord holding hw:0,1,
+# and every later start then fails EBUSY with no visible error — the meter
+# silently never comes back. The only legit holder is this script, so reap any
+# stale one first.
+subprocess.run(["pkill", "-f", "arecord -D hw:0,1"], stderr=subprocess.DEVNULL)
 arecord = subprocess.Popen(
     ["arecord", "-D", "hw:0,1", "-f", "S16_LE", "-r", "16000", "-c", "1"],
     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
