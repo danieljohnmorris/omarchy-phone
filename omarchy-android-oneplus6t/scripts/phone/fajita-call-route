@@ -3,59 +3,104 @@
 #
 # The hostless VoiceMMode1 FE (opened by q6voiced) feeds whichever AFE ports
 # have "<port> Voice Mixer VoiceMMode1" enabled, so a route change is pure
-# mixer work — no profile flip, no host PCM. The codec side needs the muxes
-# from the UCM verbs (sdm845-mainline alsa-ucm-conf): Earpiece and Headphones
-# SectionDevices. The TFA speaker amp has no kcontrols; it powers with the
-# QUAT_MI2S link. Headset switches the uplink to the headset mic
-# (SLIMBUS_2_TX / AIF3 / ADC2), mirroring the HiFi verb's Headset device.
+# mixer work — no profile flip, no host PCM. Codec-side muxes mirror the UCM
+# verbs' Earpiece/Headphones SectionDevices (sdm845-mainline alsa-ucm-conf);
+# every control name below is verified against `amixer -c0 controls` on the
+# device (2026-09-14). The TFA speaker amp has no kcontrols; it powers with
+# the QUAT_MI2S link.
 #
-#   fajita-call-route earpiece|speaker|headset   switch
+# Enable-before-disable and every cset is non-fatal: a control that vanishes
+# on a future kernel warns instead of aborting mid-case, so a partial apply
+# degrades to "both outputs on" rather than silence.
+#
+# The chosen route is recorded in ~/.local/state/fajita/call-route and
+# re-applied by fajita-call-watch after each profile flip to Voice Call: the
+# verb's EnableSequence forces the earpiece muxes and would otherwise revert
+# a mid-call speaker/headset selection without touching the mixers query shows.
+#
+#   fajita-call-route earpiece|speaker|headset   switch live-call output
+#   fajita-call-route mic off|on                 mute / unmute your uplink
 #   fajita-call-route query                      print active route
-set -euo pipefail
+#   fajita-call-route mic-query                  print on|off
+set -uo pipefail
 
-vx()  { amixer -c0 -q cset name="'$1 Voice Mixer VoiceMMode1'" "$2"; }
-cap() { amixer -c0 -q cset name="'VoiceMMode1 Capture Mixer $1'" "$2"; }
-cx()  { amixer -c0 -q cset name="$1" "$2"; }
+STATE="$HOME/.local/state/fajita/call-route"
+MIC="$HOME/.local/state/fajita/call-mic"
+mkdir -p "$(dirname "$STATE")"
+vx()  { amixer -c0 -q cset name="'$1 Voice Mixer VoiceMMode1'" "$2" 2>/dev/null \
+          || echo "warn: voice mixer '$1'" >&2; }
+cap() { amixer -c0 -q cset name="'VoiceMMode1 Capture Mixer $1'" "$2" 2>/dev/null \
+          || echo "warn: capture mixer '$1'" >&2; }
+cx()  { amixer -c0 -q cset name="$1" "$2" 2>/dev/null \
+          || echo "warn: control '$1'" >&2; }
+
+# Headset codec-path teardown, mirroring the Headphones SectionDevice's
+# DisableSequence (COMP off, HP mixer inputs ZERO, headset-mic chain ZERO).
+hp_off() {
+  cx 'COMP1 Switch' 0; cx 'COMP2 Switch' 0
+  cx 'RX INT1_1 MIX1 INP0' ZERO; cx 'RX INT2_1 MIX1 INP0' ZERO
+  cx 'AIF3_CAP Mixer SLIM TX0' 0
+  cx 'CDC_IF TX0 MUX' ZERO; cx 'ADC MUX0' ZERO; cx 'AMIC MUX0' ZERO
+}
 
 case "${1:-query}" in
   earpiece)
-    vx  SLIMBUS_0_RX on;  vx SLIMBUS_1_RX off; vx QUAT_MI2S_RX off
-    cap SLIMBUS_0_TX on;  cap SLIMBUS_2_TX off
+    vx  SLIMBUS_0_RX on
     cx 'SLIM RX0 MUX' AIF1_PB
     cx 'RX INT0 DEM MUX' CLSH_DSM_OUT
     cx 'RX INT0_1 MIX1 INP0' RX0
+    vx  SLIMBUS_1_RX off; vx QUAT_MI2S_RX off; hp_off
+    cap SLIMBUS_0_TX on;  cap SLIMBUS_2_TX off
     ;;
   speaker)
-    vx  QUAT_MI2S_RX on;  vx SLIMBUS_0_RX off; vx SLIMBUS_1_RX off
+    vx  QUAT_MI2S_RX on
+    vx  SLIMBUS_0_RX off; vx SLIMBUS_1_RX off; hp_off
+    cx 'RX INT0_1 MIX1 INP0' ZERO
     cap SLIMBUS_0_TX on;  cap SLIMBUS_2_TX off
     ;;
   headset)
-    vx  SLIMBUS_1_RX on;  vx SLIMBUS_0_RX off; vx QUAT_MI2S_RX off
-    cap SLIMBUS_2_TX on;  cap SLIMBUS_0_TX off
-    cx 'SLIM RX2 MUX' AIF2_PB
-    cx 'SLIM RX3 MUX' AIF2_PB
-    cx 'RX INT1 DEM MUX' CLSH_DSM_OUT
-    cx 'RX INT2 DEM MUX' CLSH_DSM_OUT
-    cx 'RX INT1_1 MIX1 INP0' RX2
-    cx 'RX INT2_1 MIX1 INP0' RX3
-    cx 'COMP1 Switch' 1
-    cx 'COMP2 Switch' 1
+    vx  SLIMBUS_1_RX on
+    cx 'SLIM RX2 MUX' AIF2_PB;  cx 'SLIM RX3 MUX' AIF2_PB
+    cx 'RX INT1 DEM MUX' CLSH_DSM_OUT; cx 'RX INT2 DEM MUX' CLSH_DSM_OUT
+    cx 'RX INT1_1 MIX1 INP0' RX2; cx 'RX INT2_1 MIX1 INP0' RX3
+    cx 'COMP1 Switch' 1; cx 'COMP2 Switch' 1
+    cap SLIMBUS_2_TX on
     cx 'AIF3_CAP Mixer SLIM TX0' 1
-    cx 'CDC_IF TX0 MUX' DEC0
-    cx 'ADC MUX0' AMIC
-    cx 'AMIC MUX0' ADC2
+    cx 'CDC_IF TX0 MUX' DEC0; cx 'ADC MUX0' AMIC; cx 'AMIC MUX0' ADC2
+    vx  SLIMBUS_0_RX off; vx QUAT_MI2S_RX off
+    cx 'RX INT0_1 MIX1 INP0' ZERO
+    cap SLIMBUS_0_TX off
     ;;
-  query)
+  mic)
+    # Mute = gate the hostless uplink into the modem at the AFE capture
+    # mixers (every one the routes use). Unmute = re-assert the recorded
+    # route, which re-enables exactly the capture mixer it needs. Recorded
+    # so fajita-call-watch can re-apply it after a profile flip.
+    case "$2" in
+      off) cap SLIMBUS_0_TX off; cap SLIMBUS_2_TX off; echo off > "$MIC";;
+      on)  rm -f "$MIC"
+           exec "$0" "$(cat "$STATE" 2>/dev/null || echo earpiece)";;
+      *) echo "usage: $0 mic off|on" >&2; exit 2;;
+    esac
+    exit 0
+    ;;
+  mic-query)
+    [ -f "$MIC" ] && echo off || echo on
+    exit 0
+    ;;
+   query)
     for r in "SLIMBUS_0_RX:earpiece" "QUAT_MI2S_RX:speaker" "SLIMBUS_1_RX:headset"; do
       port=${r%%:*}; name=${r##*:}
-      v=$(amixer -c0 cget name="'$port Voice Mixer VoiceMMode1'" |
+      v=$(amixer -c0 cget name="'$port Voice Mixer VoiceMMode1'" 2>/dev/null |
         sed -n 's/.*: values=//p')
       if [ "$v" = on ]; then echo "$name"; exit 0; fi
     done
     echo none
     ;;
   *)
-    sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//' >&2
+    sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//' >&2
     exit 2
     ;;
 esac
+
+case "${1:-}" in earpiece|speaker|headset) echo "$1" > "$STATE";; esac

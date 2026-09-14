@@ -77,8 +77,10 @@ if [ "${1:-}" = --sample ]; then
   # no call + closed FE, so starting before the phone rings would exit
   # before any data. Arm, then ring.
   echo "== waiting for a call to appear =="
+  w=0
   until [ "$(fajita-call list 2>/dev/null | grep -c '|')" -gt 0 ]; do
-    sleep "$TICK"
+    sleep "$TICK"; w=$((w + 1))
+    [ "$w" -ge 360 ] && { echo "no call appeared after $((w / 2))s" >&2; exit 1; }
   done
 else
   [ $# -ge 1 ] || { echo "usage: $0 NUMBER | --sample" >&2; exit 2; }
@@ -102,8 +104,10 @@ done
 echo "== FE telemetry: ${best:-none} (FE_OPEN+ expected while a call runs) =="
 echo "== end dump runs AFTER teardown (profile/verb read HiFi-era here; the"
 echo "   per-tick lines above are the during-call evidence) =="
-echo "== UCM verb (HiFi by now if the watcher flipped back) =="
-alsaucm -c 0 get _verb 2>/dev/null || alsaucm -c O6T get _verb 2>/dev/null || true
+echo "== available UCM verbs (the applied one is NOT queryable: alsaucm's verb"
+echo "   is per-connection state, so a fresh CLI cannot see what PipeWire set;"
+echo "   the csets below are the real kernel state instead) =="
+alsaucm -c 0 list _verbs 2>/dev/null || true
 echo "== the two q6voice routing csets (must be on:1) =="
 for c in 'SLIMBUS_0_RX Voice Mixer VoiceMMode1' 'VoiceMMode1 Capture Mixer SLIMBUS_0_TX'; do
   amixer -c0 cget "name='$c'" 2>/dev/null | grep -E "numid|: values" | tr '\n' ' '; echo

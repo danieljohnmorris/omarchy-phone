@@ -72,6 +72,12 @@ reconcile() {
     /Active Profile:/ && n == c { $1 = $2 = ""; gsub(/^[ :]+|[ :]+$/, ""); print; exit }')
   if [ -n "$cur" ] && [ "$cur" != "$want" ]; then
     pactl set-card-profile "$CARD" "$want" >/dev/null 2>&1 || true
+    # The Voice Call verb's EnableSequence forces the earpiece muxes, which
+    # would silently revert a mid-call speaker/headset pick. Re-assert the
+    # user's route (fajita-call-route records it) right after the flip.
+    if [ "$want" = "Voice Call" ] && [ -r "$HOME/.local/state/fajita/call-route" ]; then
+      fajita-call-route "$(cat "$HOME/.local/state/fajita/call-route")" >/dev/null 2>&1 || true
+    fi
     # Log the flip and the q6voice FE state with it: the only open question on
     # call audio is what pcm6{p,c} do during a *connected* call, and an
     # unlogged flip means that evidence exists for ~10 seconds and then is
