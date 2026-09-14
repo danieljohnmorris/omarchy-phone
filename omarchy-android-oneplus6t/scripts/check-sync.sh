@@ -56,6 +56,8 @@ phone/quicksettings.qml:.config/fajita/quicksettings.qml
 phone/lock.qml:.config/fajita/lock.qml
 phone/calls.qml:.config/fajita/calls.qml
 phone/messages.qml:.config/fajita/messages.qml
+phone/calls.desktop:.local/share/applications/calls.desktop
+phone/messages.desktop:.local/share/applications/messages.desktop
 phone/fajita-call:.local/bin/fajita-call
 phone/fajita-sms:.local/bin/fajita-sms
 phone/fajita-call-watch:.local/bin/fajita-call-watch
@@ -109,7 +111,7 @@ while IFS=: read -r repo remote; do
 done <<< "$MAP"
 
 # root-owned files, fetched separately
-for pair in "phone/ttfx-aarch64:/usr/local/bin/ttfx" "phone/gum:/usr/local/bin/gum" "phone/omarchy-theme-switcher:/usr/local/bin/omarchy-theme-switcher" "phone/proxy.sh:/etc/profile.d/proxy.sh" "phone/50-fajita-power.rules:/etc/polkit-1/rules.d/50-fajita-power.rules" "phone/51-fajita-modem.rules:/etc/polkit-1/rules.d/51-fajita-modem.rules" "phone/q6voiced:/usr/local/bin/q6voiced" "phone/q6voiced.service:/etc/systemd/system/q6voiced.service"; do
+for pair in "phone/ttfx-aarch64:/usr/local/bin/ttfx" "phone/gum:/usr/local/bin/gum" "phone/omarchy-theme-switcher:/usr/local/bin/omarchy-theme-switcher" "phone/proxy.sh:/etc/profile.d/proxy.sh" "phone/50-fajita-power.rules:/etc/polkit-1/rules.d/50-fajita-power.rules" "phone/51-fajita-modem.rules:/etc/polkit-1/rules.d/51-fajita-modem.rules" "phone/q6voiced:/usr/local/bin/q6voiced" "phone/q6voiced.service:/etc/systemd/system/q6voiced.service" "phone/81voltd:/usr/local/bin/81voltd" "phone/81voltd.service:/etc/systemd/system/81voltd.service" "phone/fajita-ims-wait:/usr/local/bin/fajita-ims-wait"; do
   repo=${pair%%:*}; remote=${pair#*:}
   if ssh -o ConnectTimeout=8 "$PH" "sudo -n tar -cf - $remote 2>/dev/null" | tar -xf - -C "$tmp" 2>/dev/null && [ -f "$tmp$remote" ]; then
     if diff -q "$HERE/$repo" "$tmp$remote" >/dev/null 2>&1; then same=$((same+1)); else
@@ -128,7 +130,7 @@ echo
 echo "unit state on the phone:"
 ssh -o ConnectTimeout=8 "$PH" '
   export XDG_RUNTIME_DIR=/run/user/$(id -u)
-  for u in q6voiced.service ModemManager.service; do
+  for u in q6voiced.service 81voltd.service ModemManager.service; do
     printf "  %-34s %s (%s)\n" "$u" "$(systemctl is-active "$u")" "$(systemctl is-enabled "$u" 2>/dev/null)"
   done
   for u in fajita-call-watch.service waybar.service squeekboard.service; do

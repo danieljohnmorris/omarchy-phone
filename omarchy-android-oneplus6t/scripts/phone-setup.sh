@@ -203,6 +203,22 @@ ssh $PH 'sudo install -m755 -o root -g root /tmp/q6voiced /usr/local/bin/q6voice
   sudo install -m644 -o root -g root /tmp/q6voiced.service /etc/systemd/system/q6voiced.service
   sudo systemctl daemon-reload; sudo systemctl enable --now q6voiced.service'
 
+# 81voltd answers the modem's QMI IMS Data requests, which brings the `ims` APN
+# bearer up. Without it a VoLTE-only network has no route to this device and
+# inbound SMS never arrives; with it the operator delivers queued messages.
+if [ ! -x "$HERE/phone/81voltd" ]; then
+  "$HERE/build-81voltd.sh"
+  install -m755 "$HERE/../build/81voltd/81voltd" "$HERE/phone/81voltd"
+fi
+# fajita-ims-wait is the unit's ExecStartPost: 81voltd answers the modem's
+# single IMS request with no retry, so the unit must verify the bearer and fail
+# if it is absent, letting Restart=always try again (see the unit's comment).
+scp -q "$HERE/phone/81voltd" "$HERE/phone/81voltd.service" "$HERE/phone/fajita-ims-wait" $PH:/tmp/
+ssh $PH 'sudo install -m755 -o root -g root /tmp/81voltd /usr/local/bin/81voltd
+  sudo install -m755 -o root -g root /tmp/fajita-ims-wait /usr/local/bin/fajita-ims-wait
+  sudo install -m644 -o root -g root /tmp/81voltd.service /etc/systemd/system/81voltd.service
+  sudo systemctl daemon-reload; sudo systemctl enable --now 81voltd.service'
+
 # Call/SMS control from a seatless caller (ssh, systemd --user) needs polkit:
 # without this every mmcli voice/messaging op fails Unauthorized.
 scp -q "$HERE/phone/51-fajita-modem.rules" $PH:/tmp/
@@ -212,6 +228,9 @@ ssh $PH 'sudo install -m644 -o root -g root /tmp/51-fajita-modem.rules /etc/polk
 scp -q "$HERE/phone/fajita-call" "$HERE/phone/fajita-sms" "$HERE/phone/fajita-call-watch" $PH:.local/bin/
 scp -q "$HERE/phone/calls.qml" "$HERE/phone/messages.qml" $PH:.config/fajita/
 scp -q "$HERE/phone/fajita-call-watch.service" $PH:.config/systemd/user/
+# Desktop entries so both apps appear in the Apps menu ("launch something" on
+# the empty-workspace hint, or the bar icon), not only in the power-key menu.
+scp -q "$HERE/phone/calls.desktop" "$HERE/phone/messages.desktop" $PH:.local/share/applications/
 ssh $PH 'chmod +x ~/.local/bin/fajita-call ~/.local/bin/fajita-sms ~/.local/bin/fajita-call-watch
   mkdir -p ~/.local/state/fajita
   systemctl --user daemon-reload

@@ -1,0 +1,34 @@
+[Unit]
+Description=QMI IMS Data service (81voltd, VoLTE bearer)
+Documentation=https://gitlab.com/flamingradian/81voltd
+After=ModemManager.service
+# Same symmetry rule as q6voiced: BindsTo + WantedBy both point at
+# ModemManager, so the daemon dies with its QMI/DBus peer and comes back when
+# MM does. PartOf alone propagates only *stop*, which once left call audio
+# silently dead after a single `systemctl restart ModemManager`.
+BindsTo=ModemManager.service
+# Restart limits are [Unit] keys (systemd ignores them under [Service]); the
+# verify-and-retry loop below trips the 5-in-10s default immediately, so allow
+# ~10 minutes of attempts and then give up rather than spin forever.
+StartLimitIntervalSec=600
+StartLimitBurst=30
+
+[Service]
+Type=simple
+# The modem asks for its IMS PDN *once*, when this service appears on QRTR, and
+# 81voltd makes exactly one connect attempt per request with no retry. Started
+# too soon after ModemManager that attempt returns `cm error: no-service`, and
+# the unit then sits "active" forever with no IMS bearer — so no inbound SMS.
+# No precondition predicts it: gating on the modem being exported, then on
+# `registration-state: home`, then on `state: connected` all still failed,
+# while an identical restart minutes later succeeds. So verify the *outcome*
+# instead and let systemd retry: fajita-ims-wait fails the unit unless an `ims`
+# APN bearer actually reports connected, and Restart=always comes back round.
+ExecStart=/usr/local/bin/81voltd
+ExecStartPost=/usr/local/bin/fajita-ims-wait
+Restart=always
+RestartSec=10
+
+
+[Install]
+WantedBy=ModemManager.service

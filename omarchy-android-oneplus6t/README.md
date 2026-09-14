@@ -532,51 +532,96 @@ guessing it wastes an afternoon:
   only after `fajita-sms send` exits 0. Clearing on tap made a rejected send
   look like the text had simply vanished.
 
-**Calls and SMS do not work on this SIM, and no userspace change here can fix
-it.** Three UK (MCC 234 / MNC 20) is VoLTE-only: `qmicli --nas-get-serving-system`
+### VoLTE: 81voltd closes most of the gap
+
+The first conclusion here was that no userspace change could help, because
+Three UK (MCC 234 / MNC 20) is VoLTE-only — `qmicli --nas-get-serving-system`
 reports `CS: 'detached'`, `PS: 'attached'`, and `--nas-get-system-info` says
-LTE `Voice support: 'no'`, `IMS voice support: 'yes'`. There is no
-circuit-switched domain to fall back to, and mainline sdm845 has no IMS stack,
-so an outgoing call goes `dialing -> terminated` after ~25s and an SMS submit
-ends in `Timeout was reached` with the object never leaving state `--`; the
-ModemManager journal names the modem's own refusal, `QMI protocol error (56):
-'WmsMessageDeliveryFailure'`. Forcing a CS-capable RAT is refused by the plugin
-(`Unsupported: The given combination of allowed and preferred modes is not
-supported`).
+LTE `Voice support: 'no'`, `IMS voice support: 'yes'`. LTE carries no
+circuit-switched voice by design, so a phone must register either in the CS
+domain (a VLR entry via 2G/3G or an SGs association) or with IMS. Neither held,
+so the HSS had no route to this device: outgoing calls went
+`dialing -> terminated` after ~25s, submits ended in `Timeout was reached`, and
+incoming calls and texts never arrived at all. Forcing a CS-capable RAT is
+refused by the plugin (`Unsupported: The given combination of allowed and
+preferred modes is not supported`), so that escape is closed too.
 
-Inbound is the same story, and it was tested with a real handset: two SMS sent
-to this SIM's own number (`mmcli -m any -K | grep own-numbers` →
-`447700900456`, matching `qmicli --dms-get-msisdn`) as carrier SMS, not
-iMessage. Over five minutes of watching, the modem exported no SMS object and
-`org.freedesktop.ModemManager1.Modem.Messaging` emitted no `Added` signal, so
-nothing ever reached userspace to ingest. MT SMS on this operator rides IMS
-too. A SIM on an operator that still runs 2G/3G CS fallback is the only way to
-test either path end to end; everything above it is in place and waiting.
+That conclusion was wrong about the IMS half. postmarketOS ships
+**`81voltd`** (`pmaports/temp/81voltd`, GPL-2.0, ~1400 lines of C): a
+server-side implementation of the QMI IMS Data service. The modem firmware
+*asks* the host to bring up an IMS PDN and has nobody to ask; 81voltd answers
+that request, drives ModemManager to connect a bearer on the `ims` APN, and
+hands the assigned address back over QMI. `scripts/build-81voltd.sh`
+cross-builds it in the same debian:bookworm arm64 container as q6voiced; its
+only deps are `mm-glib` and `libqrtr`, both already on the phone.
 
-Incoming calls were tested too, and fail one layer earlier than the dialer:
-the network never pages this device at all. A call to `07700900456` from
-another handset goes straight to voicemail, and on the phone there is no call
-object, no `Modem.Voice.CallAdded` signal and nothing in ModemManager's
-journal even at `mmcli -G DEBUG` — only the QMI indication `type = "LTE Voice
-Support" (0x21)`. That is the whole explanation in one line: LTE carries no
-circuit-switched voice by design, so a phone must register its ability to
-receive calls either in the CS domain (a VLR entry, via 2G/3G or an SGs
-association) or with IMS (a SIP REGISTER over the data bearer). This stack does
-neither, so the HSS holds no route to it, the network treats it exactly like a
-switched-off phone, and unconditional-on-unreachable diversion answers with
-voicemail. Nothing on the device can be fixed to change that.
+With it running, the IMS PDN comes up for real — `mmcli -b <path> -K` shows
+`bearer.properties.apn : ims`, `ip-type : ipv6`, `status.connected : yes` on
+`qmapmux0.1` — and **inbound SMS started working**. Three had queued every
+message the phone could not receive; 81voltd started at 00:36:16 and the store
+was written at 00:37:57 with all of them, original GSM timestamps intact
+(21:57, 22:02, 23:25), plus the network's own missed-call notifications for
+calls placed at 23:08 and 23:10. That is the whole receive path proven end to
+end on real traffic: `Modem.Messaging.Added` -> `fajita-sms ingest` -> store ->
+conversation UI.
 
-Which SIM would work, then: one on an operator that still runs a
-circuit-switched radio, so the modem can CS-attach and ModemManager's dial
-works unchanged. That requirement is structural and follows from the evidence
-above. Which operators still meet it is *not* measured here — everything below
-this line is background as of 2026, from general knowledge rather than from
-this device, and will age: in the UK, EE, Vodafone and O2 (and their MVNOs)
-kept 2G after switching 3G off, while Three never ran 2G and shut 3G down in
-December 2024, which is why this particular SIM is the worst case; operators
-that retired both radios are VoLTE-only and equally unreachable. Treat it as a
-hint about which SIM to borrow, not as fact — the only reliable test is to put
-a SIM in and read `--nas-get-serving-system` for a `CS: 'attached'`.
+Two things it does not fix yet, both recorded honestly:
+
+- **Outbound SMS still fails.** Every submit times out at 25s with
+  `message-reference` never assigned, including with the SMSC set explicitly,
+  and the modem's own refusal is `QMI protocol error (56):
+  'WmsMessageDeliveryFailure'`. QMI now emits `SMS on IMS` indications, so the
+  modem knows about the IMS route; this build of qmicli exposes no SMS domain
+  preference option (`--wms-*` offers only routes and CBS channels), so the
+  next thing to try is setting the domain preference over raw QMI.
+- **Calls do not connect, but they no longer die.** Before 81voltd a dial
+  terminated after ~7-25s; with the IMS bearer up it stays in `dialing`
+  indefinitely (>24s observed) and the card profile flips to `Voice Call`, so
+  the SIP leg is being attempted. Whether the far end rings is untested — it
+  needs someone holding the other handset.
+
+**81voltd needs verify-and-retry, not a precondition.** The modem asks for its
+IMS PDN exactly once, when the service appears on QRTR, and 81voltd makes one
+connect attempt per request with no retry. Started soon after ModemManager that
+attempt returns `Failed to connect: ... cm error: no-service` and the unit then
+sits `active` forever with no IMS bearer — the same silent-failure class as the
+`PartOf=` bug, where the service is healthy and the thing it exists to provide
+is absent. No precondition predicts it: gating the start on the modem being
+exported, then on `registration-state: home`, then on `state: connected` all
+still produced `no-service`, while restarting 81voltd alone minutes later
+succeeds first time. So the unit verifies the outcome instead —
+`ExecStartPost=/usr/local/bin/fajita-ims-wait` polls for an `apn: ims` bearer
+reporting `connected: yes` and fails the unit otherwise, and `Restart=always`
+comes back round. A hands-off `systemctl restart ModemManager` recovered in two
+retries (`no connected ims bearer after 45s` twice, then `ims bearer
+connected`, unit `active`). `StartLimitIntervalSec`/`StartLimitBurst` are
+[Unit] keys and are set there, wide enough (30 in 600s) that the retry loop
+does not trip the 5-in-10s default but a permanently IMS-less modem still stops.
+
+One log line is harmless: 81voltd always logs the IPv4 variant as
+`no-service`, because Three's IMS is IPv6-only. Only the v6 bearer matters.
+
+Incoming calls, tested *before* 81voltd existed, failed one layer earlier than
+the dialer: the network never paged the device. A call to `07700900456` from
+another handset went straight to voicemail, with no call object, no
+`Modem.Voice.CallAdded` signal and nothing in ModemManager's journal even at
+`mmcli -G DEBUG` — only the QMI indication `type = "LTE Voice Support" (0x21)`.
+With no CS registration and no IMS registration the HSS held no route, so the
+network treated the phone as switched off and diverted to voicemail. Those
+calls are the ones whose missed-call notifications later arrived as SMS, which
+is itself proof the operator had queued traffic for a device it could not
+reach. Re-testing incoming calls with the IMS bearer up is the obvious next
+experiment and needs a second handset.
+
+A SIM on an operator that still runs a circuit-switched radio remains the
+fallback path, since ModemManager's dial then works with no IMS at all. Which
+operators still meet that is *not* measured here — the rest of this paragraph
+is background as of 2026, from general knowledge rather than from this device,
+and will age: in the UK, EE, Vodafone and O2 (and their MVNOs) kept 2G after
+switching 3G off, while Three never ran 2G and shut 3G down in December 2024,
+which is why this particular SIM was the worst case. Treat it as a hint about
+which SIM to borrow, not as fact — the reliable test is to put one in and read
+`--nas-get-serving-system` for `CS: 'attached'`.
 
 Beware one iMessage trap when testing: an iPhone addressing this number may
 send blue (iMessage over IP, never touching the modem). The bubble must be
@@ -638,19 +683,20 @@ the live and never-connected cases, the store drives the conversation UI, and
 flipping to the UCM "Voice Call" profile exposes the earpiece sink and call
 mic. The call-audio path itself is verified as far as the network allows: on a
 dial, q6voiced opens both VoiceMMode1 substreams (`PREPARED`, owned by its
-MainPID) and closes them on hangup. Inbound SMS was tested with a second
-handset and never arrives: the modem exports no object and MM emits no
-`Messaging.Added` signal, so the ingest path has only been exercised against a
-stubbed `received` object (the UI-raise half of it is verified). An inbound
-*call* was tested the same way and goes to voicemail with no `CallAdded` and
-nothing in MM's journal at DEBUG: the network never pages this device. The one
-thing never observed is a connected call carrying actual audio, which needs a
-SIM whose operator still offers CS fallback.
+MainPID) and closes them on hangup. **Inbound SMS works**, on real traffic:
+with `81voltd` bringing up the IMS PDN, the operator delivered every message it
+had queued, and `Modem.Messaging.Added` -> `fajita-sms ingest` -> store ->
+conversation UI carried them through with numbers and GSM timestamps intact.
+Both apps also appear in the Apps menu via `calls.desktop`/`messages.desktop`
+as well as the power-key menu.
 
-Not working: calls and SMS *over the air* on this SIM — Three UK is VoLTE-only
-and there is no IMS stack on mainline sdm845, so the phone registers in neither
-the CS domain nor IMS, outgoing attempts are refused and incoming ones never
-reach it (see "Calls and SMS"). Bluetooth (firmware loads, HCI
+Not working: outbound SMS (every submit times out at 25s;
+`WmsMessageDeliveryFailure` from the modem) and calls, which since 81voltd sit
+in `dialing` indefinitely rather than terminating — the SIP leg is attempted
+but never connects, and a connected call carrying audio has never been
+observed. Incoming calls were last tested before 81voltd, when the network did
+not page the device at all; that needs re-testing with the IMS bearer up. See
+"VoLTE: 81voltd closes most of the gap". Bluetooth (firmware loads, HCI
 reset times out). I haven't tried the camera or sensors.
 
 Tested only on a OnePlus 6T (fajita) with Omarchy 4.0.2 and Hyprland 0.56.2.

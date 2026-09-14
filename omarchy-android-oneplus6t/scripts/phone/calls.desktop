@@ -1,0 +1,15 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Calls
+GenericName=Dialer
+Comment=Dial, answer and hang up over ModemManager
+# ipc-first, spawn as fallback: an already-running instance is shown rather
+# than duplicated. A desktop Exec cannot hold `||`, hence bash -lc (the same
+# shape the power-key menu rows use).
+Exec=bash -lc "quickshell -p ~/.config/fajita/calls.qml ipc call fajita-calls show 2>/dev/null || quickshell -p ~/.config/fajita/calls.qml"
+Icon=call-start
+Terminal=false
+StartupNotify=true
+StartupWMClass=org.quickshell
+Categories=Network;Telephony;

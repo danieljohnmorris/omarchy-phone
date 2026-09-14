@@ -1,0 +1,15 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Messages
+GenericName=SMS
+Comment=Read and send SMS over ModemManager
+# ipc-first, spawn as fallback: an already-running instance is shown rather
+# than duplicated. A desktop Exec cannot hold `||`, hence bash -lc (the same
+# shape the power-key menu rows use).
+Exec=bash -lc "quickshell -p ~/.config/fajita/messages.qml ipc call fajita-messages show 2>/dev/null || quickshell -p ~/.config/fajita/messages.qml"
+Icon=mail-message-new
+Terminal=false
+StartupNotify=true
+StartupWMClass=org.quickshell
+Categories=Network;Telephony;InstantMessaging;
