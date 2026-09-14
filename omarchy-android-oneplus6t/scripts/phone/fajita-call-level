@@ -58,7 +58,10 @@ try:
                 buf += chunk
         if time.monotonic() < next_tick:
             continue
-        next_tick += 0.1
+        # Never chase a backlog: after a stall (scheduler, starved capture) a
+        # bare += leaves several ticks past due and the loop spins at timeout 0,
+        # emitting a burst of samples that reads as a spike on the graph.
+        next_tick = max(next_tick + 0.1, time.monotonic())
         n = len(buf) // 2
         rms = 0.0
         if n:
