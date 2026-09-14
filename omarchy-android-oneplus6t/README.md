@@ -466,20 +466,32 @@ power-key menu ("Calls", "Messages") or by the watcher on an event:
   built by `build-q6voiced.sh`) opens the hostless `VoiceMMode1` PCM
   (`hw:0,6`) on MM call signals; the UCM "Voice Call" verb does the backend
   routing (earpiece + bottom mic).
-- **The call-audio path is provable without a connectable network.** Create a
+- **The call-audio path is provable without waiting for a callee.** Create a
   call and `--start` it: while it is `dialing`, q6voiced opens *both*
   VoiceMMode1 substreams — `/proc/asound/card0/pcm6{p,c}/sub0/status` go from
   `closed` to `state: PREPARED` with `owner_pid` equal to q6voiced's MainPID —
   the card sits on `Voice Call`, and both return to `closed` after hangup. So
-  the kernel q6voice FE and the UCM backend work; only the modem's own
-  downlink/uplink stream is missing, because the call never connects.
+  the kernel q6voice FE and the UCM backend work.
+- **Calls do connect on this device; do not read "dialing only" into the
+  logs.** `journalctl -u ModemManager` for 2025-09-14 07:17 has two outgoing
+  calls going `unknown -> dialing -> ringing-out -> active -> terminated`
+  (call0 active 07:17:12–07:17:19, call1 active 07:17:48–07:17:54) and an
+  inbound `ringing-in` at 07:20:13, on `3 UK` / `access tech: lte` with the
+  81voltd IMS bearer connected since 01:34:54. What is still *unproven* is
+  audio during a connected call: q6voiced logged nothing in that window (its
+  journal file for the period is damaged — "Identifier removed"), and
+  `pcm6{p,c}` were not sampled while a call was `active`. That live sample,
+  taken during a call rather than during `dialing`, is the remaining gap.
 - **`ipc call … show || spawn` is not a launcher: a Quickshell process outlives
   the compositor.** After an overnight shell restart the `messages.qml`
-  instance was still running with every Wayland fd closed
-  (`ls /proc/$pid/fd | grep -c wayland` → 0), so it could never map a window
-  again — but it still owned the `fajita-messages` IPC socket. `ipc call show`
-  therefore *succeeded*, the `||` fallback never ran, and tapping the row did
-  nothing at all. `fajita-app calls|messages` is now the single launch path for
+  instance (pid 358400) was still running and still owned the
+  `fajita-messages` IPC socket, but had no window: `ipc call fajita-messages
+  show` returned rc=0 while `hyprctl clients` held 0 quickshell windows. The
+  reason it is a *silent* no-op is the QML itself — `show()` is
+  `if (!root.open) root.toggle()` (`messages.qml:211`), and `root.open` was
+  still true from before the restart. Success without a window means the `||`
+  fallback never ran and tapping the row did nothing at all.
+  `fajita-app calls|messages` is now the single launch path for
   the menu rows, the `.desktop` entries and the watcher: it focuses an existing
   *mapped* window (matched on `hyprctl clients` title), otherwise reaps any
   instance matching `quickshell -p <that qml>` and respawns under `setsid`,

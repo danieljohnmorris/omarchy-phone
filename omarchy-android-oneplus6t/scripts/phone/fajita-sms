@@ -14,6 +14,7 @@
 #   fajita-sms sweep                ingest every received SMS still sitting in
 #                                   modem storage (boot-time catch-up)
 #   fajita-sms last NUMBER [N]      print the last N lines for one number
+#   fajita-sms normalize            canonicalise stored numbers to E.164
 set -euo pipefail
 
 MODEM="${FDM_MODEM:-any}"
@@ -45,8 +46,31 @@ create_and_send() { # $1 number, $2 text
   mmcli -m "$MODEM" --messaging-delete-sms="$path" >/dev/null 2>&1 || true
 }
 
+# One thread per correspondent: the network hands back E.164 ("+447700900123")
+# on receive, while the user dials the national form ("07700900123"). Storing
+# both verbatim split every conversation in two — the thread then held only
+# their side, so nothing was right-aligned and it read as "no idea who sent
+# what". Canonicalise on the way in; alphanumeric senders ("Missed Call") and
+# short codes are left alone.
+CC="${FAJITA_CC:-44}"
+canon() { # $1 = number as dialled or as reported
+  # Only dialable strings are rewritten. "Missed Call" must stay verbatim:
+  # stripping its space produced a bogus "MissedCall" thread on the device.
+  case "$1" in
+    *[!0-9+\ \(\)-]*) printf '%s\n' "$1"; return ;;
+  esac
+  local n=${1//[ ()-]/}
+  case "$n" in
+    +*)    printf '%s\n' "$n" ;;
+    00*)   printf '+%s\n' "${n#00}" ;;
+    0[1-9]*) printf '+%s%s\n' "$CC" "${n#0}" ;;
+    [0-9]*) [ ${#n} -ge 9 ] && printf '+%s\n' "$n" || printf '%s\n' "$n" ;;
+    *)     printf '%s\n' "$n" ;;
+  esac
+}
+
 append() { # dir number text ts
-  jq -cn --argjson ts "$4" --arg dir "$1" --arg number "$2" --arg text "$3" \
+  jq -cn --argjson ts "$4" --arg dir "$1" --arg number "$(canon "$2")" --arg text "$3" \
     '{ts:$ts,dir:$dir,number:$number,text:$text}' >> "$STORE"
 }
 
@@ -63,7 +87,9 @@ ingest() { # $1 = /org/freedesktop/ModemManager1/SMS/N
   # -J nests three levels deep on this mmcli: .sms.content.{number,text} and
   # .sms.properties.{state,timestamp} (verified against a live SMS object; the
   # flat dotted form is what -K prints, and is accepted here as a fallback).
-  number=$(jq -r '.sms.content.number // getpath(["sms.content.number"]) // ""' <<<"$j")
+  # Canonicalise before the dedupe compare, or a raw number would never match
+  # the canonical form already in the store and every race would double-log.
+  number=$(canon "$(jq -r '.sms.content.number // getpath(["sms.content.number"]) // ""' <<<"$j")")
   text=$(jq -r '.sms.content.text // getpath(["sms.content.text"]) // ""' <<<"$j")
   state=$(jq -r '.sms.properties.state // getpath(["sms.properties.state"]) // ""' <<<"$j")
   # Only inbound messages are ours to consume. Never touch anything else:
@@ -104,10 +130,21 @@ case "${1:-}" in
     ;;
   last)
     [ $# -ge 2 ] || { echo "usage: fajita-sms last NUMBER [N]" >&2; exit 2; }
-    jq -r --arg n "$2" 'select(.number==$n) | "\(.ts)|\(.dir)|\(.text)"' "$STORE" | tail -n "${3:-20}"
+    jq -r --arg n "$(canon "$2")" 'select(.number==$n) | "\(.ts)|\(.dir)|\(.text)"' "$STORE" | tail -n "${3:-20}"
+    ;;
+  normalize)
+    # Rewrite pre-canon lines in place, so old sent/received pairs collapse
+    # into one thread instead of two. Idempotent; run by phone-setup.sh.
+    tmp=$(mktemp)
+    while IFS= read -r line; do
+      [ -n "$line" ] || continue
+      n=$(jq -r '.number' <<<"$line")
+      jq -c --arg n "$(canon "$n")" '.number=$n' <<<"$line"
+    done < "$STORE" > "$tmp"
+    mv "$tmp" "$STORE"
     ;;
   *)
-    sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//' >&2
+    sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//' >&2
     exit 2
     ;;
 esac

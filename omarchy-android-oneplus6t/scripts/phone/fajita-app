@@ -4,10 +4,12 @@
 #
 # Why this is not just `ipc call … show || quickshell -p …`: a Quickshell process
 # outlives the compositor. After a shell restart the old instance keeps running
-# with its Wayland fds closed (`ls /proc/PID/fd | grep -c wayland` -> 0), so it
-# can never map a window again — but it still owns the IPC socket. `ipc call`
-# then succeeds against that corpse, the `||` fallback never fires, and tapping
-# the row looks like the app hangs with nothing on screen.
+# and still owns the IPC socket, but has no window. `show()` in the QML is
+# `if (!root.open) root.toggle()` — with `root.open` still true from before the
+# restart the call returns success while doing nothing at all, so the `||`
+# fallback never fires and tapping the row looks like the app hangs with
+# nothing on screen. Verified on-device: pid 358400 answered `ipc call
+# fajita-messages show` with rc=0 while `hyprctl clients` held 0 windows.
 #
 # So verify the outcome (a mapped window), not the call: focus an existing
 # window, else try IPC, else reap the stale process and spawn a fresh one.
@@ -30,9 +32,15 @@ if [ -z "${WAYLAND_DISPLAY:-}" ]; then
   done
 fi
 export WAYLAND_DISPLAY
+# A compositor restart leaves the previous signature dir behind, so require a
+# live socket that actually answers hyprctl — otherwise this script queries a
+# dead compositor for a window that can never be there.
 if [ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
-  for d in "$XDG_RUNTIME_DIR"/hypr/*; do
-    [ -d "$d" ] && { HYPRLAND_INSTANCE_SIGNATURE=${d##*/}; break; }
+  for d in "$XDG_RUNTIME_DIR"/hypr/*/; do
+    [ -S "${d}.socket.sock" ] || continue
+    sig=${d%/}; sig=${sig##*/}
+    hyprctl -i "$sig" version >/dev/null 2>&1 || continue
+    HYPRLAND_INSTANCE_SIGNATURE=$sig; break
   done
 fi
 export HYPRLAND_INSTANCE_SIGNATURE

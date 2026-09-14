@@ -240,8 +240,10 @@ scp -q "$HERE/phone/fajita-call-watch.service" $PH:.config/systemd/user/
 # the empty-workspace hint, or the bar icon), not only in the power-key menu.
 scp -q "$HERE/phone/calls.desktop" "$HERE/phone/messages.desktop" $PH:.local/share/applications/
 ssh $PH 'chmod +x ~/.local/bin/fajita-call ~/.local/bin/fajita-sms ~/.local/bin/fajita-call-watch ~/.local/bin/fajita-app
-  mkdir -p ~/.local/state/fajita
   systemctl --user daemon-reload
-  systemctl --user enable --now fajita-call-watch.service'
+  # enable --now is a no-op on an already-running unit, which would leave the
+  # previous fajita-call-watch code live after a re-deploy; restart explicitly.
+  systemctl --user enable fajita-call-watch.service
+  systemctl --user restart fajita-call-watch.service'
 
 echo "phone setup done"

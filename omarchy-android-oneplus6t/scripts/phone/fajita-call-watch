@@ -39,6 +39,13 @@ call_audio_needed() { # $1 = `fajita-call list` output
   return 1
 }
 
+# q6voice FE state, for the flip log. The status file is literally "closed"
+# when idle, otherwise a key: value block containing `state: RUNNING`.
+pcm_state() { # $1 = pcm6p|pcm6c
+  awk '/^state:/ { print $2; f = 1 } END { if (!f) print "closed" }' \
+    "/proc/asound/card0/$1/sub0/status" 2>/dev/null || echo unknown
+}
+
 # Raising is fajita-app's job: it verifies a window actually maps. Doing the
 # `ipc call … show || spawn` dance here silently did nothing whenever a
 # windowless instance survived a shell restart and still owned the IPC socket.
@@ -57,6 +64,13 @@ reconcile() {
     /Active Profile:/ && n == c { $1 = $2 = ""; gsub(/^[ :]+|[ :]+$/, ""); print; exit }')
   if [ -n "$cur" ] && [ "$cur" != "$want" ]; then
     pactl set-card-profile "$CARD" "$want" >/dev/null 2>&1 || true
+    # Log the flip and the q6voice FE state with it: the only open question on
+    # call audio is what pcm6{p,c} do during a *connected* call, and an
+    # unlogged flip means that evidence exists for ~10 seconds and then is
+    # gone forever (as happened on 2025-09-14 07:17).
+    printf 'profile %s -> %s; pcm6p=%s pcm6c=%s; calls=[%s]\n' \
+      "$cur" "$want" "$(pcm_state pcm6p)" "$(pcm_state pcm6c)" \
+      "$(printf '%s' "$calls" | tr '\n' ';')"
   fi
 
   # --- incoming call: UI + one-shot notify per call path ---
