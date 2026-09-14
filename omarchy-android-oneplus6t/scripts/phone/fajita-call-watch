@@ -95,6 +95,15 @@ reconcile() {
         fajita-call-route "$(cat "$HOME/.local/state/fajita/call-route")" >/dev/null 2>&1 || true
       ) &
     fi
+    # Teardown: park the voice RX port back on earpiece. The AFE mixers outlive
+    # the call, so a speaker pick left QUAT_MI2S_RX enabled and the *next* call
+    # then began dialing with it already on — the fatal ordering above, killing
+    # rx for that whole call (observed 2026-09-14 23:16: pcm6p closed, four
+    # "Failed to open rx"). NO_SAVE keeps the user's recorded pick, so the
+    # re-apply above still restores speaker once the FE is open.
+    if [ "$want" = "HiFi" ]; then
+      FAJITA_ROUTE_NO_SAVE=1 fajita-call-route earpiece >/dev/null 2>&1 || true
+    fi
     # Log the flip and the q6voice FE state with it: the only open question on
     # call audio is what pcm6{p,c} do during a *connected* call, and an
     # unlogged flip means that evidence exists for ~10 seconds and then is
