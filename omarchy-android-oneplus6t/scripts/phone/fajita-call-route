@@ -51,12 +51,30 @@ cap() { amixer -c0 -q cset name="'VoiceMMode1 Capture Mixer $1'" "$2" 2>/dev/nul
 cx()  { amixer -c0 -q cset name="$1" "$2" 2>/dev/null \
           || echo "warn: control '$1'" >&2; }
 
-# Route arms re-enable their capture mixer, so a route switch mid-mute would
-# silently unmute the uplink while the UI still shows muted. Every arm ends
-# with this: re-gate the capture mixers when the mic is muted.
+# Mic gating is a DIGITAL GAIN on the TX7 decimator, never an AFE capture
+# mixer or a codec mux. Measured 2026-09-14 mid-call, per mute/unmute cycle:
+#   VoiceMMode1 Capture Mixer SLIMBUS_0_TX off/on -> "Port Closed TX port 7"
+#     and no re-open: the ADSP voice TX is dead for the rest of the call, so
+#     the far end hears nothing after one mute or route switch (the bug).
+#   ADC MUX7 ZERO/AMIC -> occasional "underflow error on TX port 7".
+#   DEC7 Volume 0/84   -> no kernel events at all.
+# DEC7 Volume advertises mute=1 with min = -84 dB, so 0 is true silence; it is
+# also the decimator the level meter reads, so a muted graph reads 0 honestly.
+MIC_GAIN=84
+mic_gate() { # on|off
+  if [ "$1" = off ]; then cx 'DEC7 Volume' 0; else cx 'DEC7 Volume' "$MIC_GAIN"; fi
+}
+# Route arms must not silently unmute: re-apply the gate after each switch.
 reassert_mute() {
-  [ -f "$MIC" ] && { cap SLIMBUS_0_TX off; cap SLIMBUS_2_TX off; }
+  [ -f "$MIC" ] && mic_gate off
   return 0
+}
+# Only write an AFE capture mixer when the value actually changes: an
+# off->on->off churn tears TX port 7 down (see above), and the arms re-assert
+# these on every switch.
+capq() { # port value
+  [ "$(amixer -c0 cget name="'VoiceMMode1 Capture Mixer $1'" 2>/dev/null |
+        sed -n 's/.*: values=//p')" = "$2" ] || cap "$1" "$2"
 }
 
 # Headset codec-path teardown, mirroring the Headphones SectionDevice's
@@ -75,7 +93,7 @@ case "${1:-query}" in
     cx 'RX INT0 DEM MUX' CLSH_DSM_OUT
     cx 'RX INT0_1 MIX1 INP0' RX0
     vx  SLIMBUS_1_RX off; vx QUAT_MI2S_RX off; hp_off
-    cap SLIMBUS_0_TX on;  cap SLIMBUS_2_TX off
+    capq SLIMBUS_0_TX on;  capq SLIMBUS_2_TX off
     reassert_mute
     ;;
   speaker)
@@ -89,7 +107,7 @@ case "${1:-query}" in
     vx  QUAT_MI2S_RX on
     vx  SLIMBUS_0_RX off; vx SLIMBUS_1_RX off; hp_off
     cx 'RX INT0_1 MIX1 INP0' ZERO
-    cap SLIMBUS_0_TX on;  cap SLIMBUS_2_TX off
+    capq SLIMBUS_0_TX on;  capq SLIMBUS_2_TX off
     reassert_mute
     ;;
   headset)
@@ -98,29 +116,30 @@ case "${1:-query}" in
     cx 'RX INT1 DEM MUX' CLSH_DSM_OUT; cx 'RX INT2 DEM MUX' CLSH_DSM_OUT
     cx 'RX INT1_1 MIX1 INP0' RX2; cx 'RX INT2_1 MIX1 INP0' RX3
     cx 'COMP1 Switch' 1; cx 'COMP2 Switch' 1
-    cap SLIMBUS_2_TX on
+    capq SLIMBUS_2_TX on
     cx 'AIF3_CAP Mixer SLIM TX0' 1
     cx 'CDC_IF TX0 MUX' DEC0; cx 'ADC MUX0' AMIC; cx 'AMIC MUX0' ADC2
     vx  SLIMBUS_0_RX off; vx QUAT_MI2S_RX off
     cx 'RX INT0_1 MIX1 INP0' ZERO
-    cap SLIMBUS_0_TX off
+    capq SLIMBUS_0_TX off
     reassert_mute
     ;;
   mic)
-    # Mute = gate the hostless uplink into the modem at the AFE capture
-    # mixers (every one the routes use). Unmute = re-assert the recorded
-    # route, which re-enables exactly the capture mixer it needs. Recorded
-    # so fajita-call-watch can re-apply it after a profile flip.
+    # Mute = zero the codec mic mux (see mic_gate). Never the AFE capture
+    # mixer: that closes TX port 7 for good mid-call. Recorded in $MIC so a
+    # route switch or profile flip can re-assert it.
     case "$2" in
-      off) cap SLIMBUS_0_TX off; cap SLIMBUS_2_TX off; echo off > "$MIC";;
-      on)  rm -f "$MIC"
-           exec "$0" "$(cat "$STATE" 2>/dev/null || echo earpiece)";;
+      off) mic_gate off; echo off > "$MIC";;
+      on)  rm -f "$MIC"; mic_gate on;;
       *) echo "usage: $0 mic off|on" >&2; exit 2;;
     esac
     exit 0
     ;;
   mic-query)
-    [ -f "$MIC" ] && echo off || echo on
+    # Kernel truth, not the state file: an external cset (or a stale file)
+    # would otherwise make the UI label disagree with the hardware.
+    [ "$(amixer -c0 cget name="'DEC7 Volume'" 2>/dev/null |
+          sed -n 's/.*: values=//p')" = 0 ] && echo off || echo on
     exit 0
     ;;
    query)
