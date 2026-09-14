@@ -28,7 +28,7 @@ ShellRoot {
   property string tab: "recents"  // idle view: "recents" | "keypad"
   property var log: []            // call log [{ts,dir,number,answered,dur}] oldest first
   property string callRoute: "earpiece" // live-call output: earpiece|speaker|headset
-  property bool levelOn: false  // mic strip is opt-in: its capture contaminates clean-call testing
+  property bool levelOn: true // mic strip on by default (asked-for feature); tap "level" to disable for a capture-free call
   property bool micMuted: false // uplink gated at the AFE capture mixers; seeded from kernel truth
   property var audioTicks: []   // [{v:0..1}] dB-scaled mic level per 0.5s, newest last (max 60)
   property string lastError: ""
@@ -76,7 +76,7 @@ ShellRoot {
       colors.reload() // stale palette if a theme switched while we ran hidden
       rescan.running = true // restarting a running Process re-runs it
       logLoad.running = true
-      activeLoad.running = true // restore live-call durations across respawn
+
       micQuery.running = true // seed the mute button from kernel state
       quitTimer.stop()
     }
@@ -183,11 +183,13 @@ ShellRoot {
       onRead: data => {
         if (data.trim() === "__ACTIVE__") { rescan.inActive = true; return }
         if (rescan.inActive) {
-          // path|epoch from the watcher: a respawned instance seeds its
-          // in-process callStart from these, so live-call durations survive
-          // a redeploy mid-call instead of restarting at 0:00.
+          // path|epoch from the watcher. Overwrites unconditionally: the
+          // list lines above run first in this same stream and stamp
+          // Date.now(), so a guarded seed would never win — a respawned
+          // instance must take the watcher's first-active epoch instead,
+          // every tick, or live-call durations restart at 0:00.
           var a = data.split("|")
-          if (a.length === 2 && !root.callStart[a[0]])
+          if (a.length === 2)
             root.callStart[a[0]] = parseInt(a[1], 10) * 1000
           return
         }
@@ -226,21 +228,6 @@ ShellRoot {
           var o = JSON.parse(data)
           if (o && o.ts) root.log = root.log.concat(o)
         } catch (e) { /* partial or non-JSON line: skip */ }
-      }
-    }
-  }
-
-  // The watcher records when each live call first went active
-  // (path|epoch-seconds, one per line). Without seeding from it, a respawn
-  // mid-call (redeploy, crash) restarts the duration timer at 0:00.
-  Process {
-    id: activeLoad
-    running: false
-    command: ["bash", "-lc", "cat ~/.local/state/fajita/call-active 2>/dev/null"]
-    stdout: SplitParser {
-      onRead: data => {
-        var p = data.split("|")
-        if (p.length === 2) root.callStart[p[0]] = parseInt(p[1]) * 1000
       }
     }
   }
