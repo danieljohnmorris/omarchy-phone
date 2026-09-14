@@ -245,12 +245,17 @@ ShellRoot {
         if (data.trim() === "__ACTIVE__") { rescan.inActive = true; return }
         if (data.trim() === "__FE__") { rescan.inActive = false; rescan.inFe = true; return }
         if (rescan.inFe) {
-          // "Them": the hostless voice FE only enters RUNNING when the
-          // network actually sends media — the one downlink observable
-          // Linux has on this SoC (amplitude never becomes host PCM).
+          // "Them": the hostless voice FE never enters RUNNING — no host
+          // pointer moves, the ADSP owns the session — so RUNNING is not a
+          // reachable state and keying on it reported "no audio" on every
+          // healthy call. What is observable: the FE is open (PREPARED) only
+          // when q6voiced's rx/tx open succeeded, i.e. the voice path is
+          // wired; a failed open (e.g. the old speaker route) leaves it
+          // "closed" with "Failed to open rx" in the q6voiced log.
           var m = /^state:\s*(\S+)/.exec(data)
           if (m) {
-            var t = root.sessHist.concat([m[1] === "RUNNING" ? 1 : 0.08])
+            var open = m[1] === "PREPARED" || m[1] === "RUNNING"
+            var t = root.sessHist.concat([open ? 1 : 0.08])
             if (t.length > root.graphPoints) t = t.slice(t.length - root.graphPoints)
             root.sessHist = t
             sessGraph.requestPaint()
@@ -455,11 +460,10 @@ ShellRoot {
         // Two live graphs, same shape as the cellular panel's:
         //   "you"  — mic level over time (fajita-call-level capture, dB-scaled
         //            0..100). Moves while you are audible into the call.
-        //   "them" — the ADSP voice session. The hostless FE only enters
-        //            RUNNING when the network actually sends media, so the
-        //            line sits near zero until real call audio flows (its
-        //            amplitude is not tappable on this SoC — state is the
-        //            one honest downlink observable).
+        //   "them" — the ADSP voice session. The hostless FE is unreadable
+        //            (no amplitude, no RUNNING state on this SoC); the one
+        //            honest observable is whether q6voiced got the FE open,
+        //            which is the whole downlink path being wired.
         // The chip toggles only the mic capture ("you"); "them" is read-only.
         ColumnLayout {
           visible: root.calls.length > 0
@@ -514,9 +518,9 @@ ShellRoot {
                 : root.micMuted ? String(root.cRed) : String(root.cGreen))
           }
 
-          // "them" label above its own graph, then the verdict caption: a
-          // flat line is the honest result (no media) and must not read as a
-          // broken graph.
+          // "them" label above its own graph, then the verdict caption: the
+          // line is a path-open indicator, not a level, so the caption says
+          // which it is — a flat low line means the FE never opened.
           Text {
             Layout.fillWidth: true
             text: "them"
@@ -536,9 +540,9 @@ ShellRoot {
             Layout.fillWidth: true
             horizontalAlignment: Text.AlignHCenter
             text: (root.sessHist.length && root.sessHist[root.sessHist.length - 1] > 0.5)
-              ? "call audio flowing" : "no audio from network"
+              ? "voice path open" : "voice path down"
             color: (root.sessHist.length && root.sessHist[root.sessHist.length - 1] > 0.5)
-              ? root.cGreen : root.cMuted
+              ? root.cGreen : root.cRed
             font.family: "JetBrainsMono Nerd Font"
             font.pixelSize: 10
           }
