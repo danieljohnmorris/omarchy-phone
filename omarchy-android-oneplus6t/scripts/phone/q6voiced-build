@@ -1,0 +1,38 @@
+#!/bin/bash
+# Build and install our patched q6voiced on the phone (run ON the phone).
+#
+# Upstream (gitlab.com/postmarketOS/q6voiced) has two defects that cost this
+# device its call audio; q6voiced.c here carries the fix and the rationale:
+#
+#   1. pcm_open() returns a non-NULL handle on failure and the result was
+#      stored unconditionally, so "if (v->tx) return" made every later
+#      call-start signal a no-op -- one bad open killed voice audio for the
+#      process lifetime ("only the first call or two works", pmaports#1876).
+#   2. The rx/tx legs were coupled. On fajita the tx (uplink) pcm_prepare
+#      fails EINVAL persistently ("cannot prepare channel") while rx opens
+#      fine, so a coupled teardown destroyed the working downlink too and the
+#      earpiece went silent. Measured after the split: rx PREPARED on 6/6
+#      calls.
+#
+# tinyalsa is not packaged for Arch ARM, so it is built from source and linked
+# statically: a shared build resolves libtinyalsa.so.2 from the build tree and
+# the systemd unit then crash-loops on "cannot open shared object file".
+set -euo pipefail
+
+SRC=${1:-$(dirname "$0")/q6voiced.c}
+T=$(mktemp -d)
+trap 'rm -rf "$T"' EXIT
+
+git clone --depth 1 https://github.com/tinyalsa/tinyalsa "$T/tinyalsa"
+make -C "$T/tinyalsa"
+
+gcc -O2 -o "$T/q6voiced" "$SRC" \
+  -I"$T/tinyalsa/include" \
+  $(pkg-config --cflags --libs dbus-1) \
+  "$T/tinyalsa/src/libtinyalsa.a"
+
+sudo cp -n /usr/local/bin/q6voiced /usr/local/bin/q6voiced.orig 2>/dev/null || true
+sudo install -m755 "$T/q6voiced" /usr/local/bin/q6voiced
+sudo systemctl restart q6voiced
+sleep 2
+systemctl is-active q6voiced
