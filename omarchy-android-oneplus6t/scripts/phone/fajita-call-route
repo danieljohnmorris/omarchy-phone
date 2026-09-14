@@ -1,13 +1,20 @@
 #!/bin/bash
-# Switch the live call's audio route: earpiece | speaker | headset.
+# Switch the live call's audio route: earpiece | headset.
 #
 # The hostless VoiceMMode1 FE (opened by q6voiced) feeds whichever AFE ports
 # have "<port> Voice Mixer VoiceMMode1" enabled, so a route change is pure
 # mixer work — no profile flip, no host PCM. Codec-side muxes mirror the UCM
 # verbs' Earpiece/Headphones SectionDevices (sdm845-mainline alsa-ucm-conf);
 # every control name below is verified against `amixer -c0 controls` on the
-# device (2026-09-14). The TFA speaker amp has no kcontrols; it powers with
-# the QUAT_MI2S link.
+# device (2026-09-14).
+#
+# No speaker arm. The loudspeaker sits behind the TFA amp on QUAT_MI2S, and
+# enabling "QUAT_MI2S_RX Voice Mixer VoiceMMode1" gives the hostless voice FE
+# a backend it cannot be configured against (the Voice Call UCM verb wires
+# only SLIMBUS_0_RX / SLIMBUS_1_RX): q6voiced's rx open then fails EINVAL and
+# the call runs with pcm6p closed — no downlink audio at all, persisting into
+# later calls via the state file below. Measured on device: earpiece/headset
+# -> pcm6p PREPARED; speaker, or speaker+earpiece together -> pcm6p closed.
 #
 # Enable-before-disable and every cset is non-fatal: a control that vanishes
 # on a future kernel warns instead of aborting mid-case, so a partial apply
@@ -16,9 +23,9 @@
 # The chosen route is recorded in ~/.local/state/fajita/call-route and
 # re-applied by fajita-call-watch after each profile flip to Voice Call: the
 # verb's EnableSequence forces the earpiece muxes and would otherwise revert
-# a mid-call speaker/headset selection without touching the mixers query shows.
+# a mid-call headset selection without touching the mixers query shows.
 #
-#   fajita-call-route earpiece|speaker|headset   switch live-call output
+#   fajita-call-route earpiece|headset           switch live-call output
 #   fajita-call-route mic off|on                 mute / unmute your uplink
 #   fajita-call-route query                      print active route
 #   fajita-call-route mic-query                  print on|off
@@ -27,6 +34,9 @@ set -uo pipefail
 STATE="$HOME/.local/state/fajita/call-route"
 MIC="$HOME/.local/state/fajita/call-mic"
 mkdir -p "$(dirname "$STATE")"
+# A state file written by an older build can still say "speaker", which would
+# re-apply the downlink-killing route on the next unmute or profile flip.
+[ "$(cat "$STATE" 2>/dev/null)" = speaker ] && echo earpiece > "$STATE"
 vx()  { amixer -c0 -q cset name="'$1 Voice Mixer VoiceMMode1'" "$2" 2>/dev/null \
           || echo "warn: voice mixer '$1'" >&2; }
 cap() { amixer -c0 -q cset name="'VoiceMMode1 Capture Mixer $1'" "$2" 2>/dev/null \
@@ -58,13 +68,6 @@ case "${1:-query}" in
     cx 'RX INT0 DEM MUX' CLSH_DSM_OUT
     cx 'RX INT0_1 MIX1 INP0' RX0
     vx  SLIMBUS_1_RX off; vx QUAT_MI2S_RX off; hp_off
-    cap SLIMBUS_0_TX on;  cap SLIMBUS_2_TX off
-    reassert_mute
-    ;;
-  speaker)
-    vx  QUAT_MI2S_RX on
-    vx  SLIMBUS_0_RX off; vx SLIMBUS_1_RX off; hp_off
-    cx 'RX INT0_1 MIX1 INP0' ZERO
     cap SLIMBUS_0_TX on;  cap SLIMBUS_2_TX off
     reassert_mute
     ;;
@@ -100,7 +103,7 @@ case "${1:-query}" in
     exit 0
     ;;
    query)
-    for r in "SLIMBUS_0_RX:earpiece" "QUAT_MI2S_RX:speaker" "SLIMBUS_1_RX:headset"; do
+    for r in "SLIMBUS_0_RX:earpiece" "SLIMBUS_1_RX:headset"; do
       port=${r%%:*}; name=${r##*:}
       v=$(amixer -c0 cget name="'$port Voice Mixer VoiceMMode1'" 2>/dev/null |
         sed -n 's/.*: values=//p')
@@ -109,9 +112,9 @@ case "${1:-query}" in
     echo none
     ;;
   *)
-    sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//' >&2
+    sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//' >&2
     exit 2
     ;;
 esac
 
-case "${1:-}" in earpiece|speaker|headset) echo "$1" > "$STATE";; esac
+case "${1:-}" in earpiece|headset) echo "$1" > "$STATE";; esac

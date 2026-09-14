@@ -27,7 +27,7 @@ ShellRoot {
   property double now: 0          // bumped per second; re-evaluates duration bindings
   property string tab: "recents"  // idle view: "recents" | "keypad"
   property var log: []            // call log [{ts,dir,number,answered,dur}] oldest first
-  property string callRoute: "earpiece" // live-call output: earpiece|speaker|headset
+  property string callRoute: "earpiece" // live-call output: earpiece|headset
   property bool levelOn: true // mic strip on by default (asked-for feature); tap "level" to disable for a capture-free call
   property bool micMuted: false // uplink gated at the AFE capture mixers; seeded from kernel truth
   property var micHist: []    // "you": mic RMS 0..100 (dB-scaled), newest last
@@ -617,14 +617,19 @@ ShellRoot {
             }
             }
 
-            // Output picker: earpiece / speaker / wired headset. Pure AFE
-            // mixer switching (fajita-call-route), applies mid-call.
+            // Output picker: earpiece / wired headset. Pure AFE mixer
+            // switching (fajita-call-route), applies mid-call. No speaker:
+            // the loudspeaker hangs off QUAT_MI2S (TFA amp), and enabling
+            // "QUAT_MI2S_RX Voice Mixer VoiceMMode1" leaves the voice FE with
+            // no valid backend config — q6voiced's rx open then fails EINVAL
+            // and the call has no downlink at all (measured: pcm6p stays
+            // closed). Offering it would be a silent-deafness button.
             RowLayout {
               Layout.fillWidth: true
               spacing: 8
 
               Repeater {
-                model: ["earpiece", "speaker", "headset"]
+                model: ["earpiece", "headset"]
 
                 Rectangle {
                   required property string modelData
