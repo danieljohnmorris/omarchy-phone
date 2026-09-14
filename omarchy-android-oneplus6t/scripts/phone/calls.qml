@@ -130,8 +130,8 @@ ShellRoot {
     ctx.globalAlpha = 0.35
     ctx.lineWidth = 1
     ctx.beginPath()
-    ctx.moveTo(0, cv.height - 0.5)
-    ctx.lineTo(cv.width, cv.height - 0.5)
+    ctx.moveTo(0, cv.height - 1.5) // inset: a 1px stroke on height-0.5 clips
+    ctx.lineTo(cv.width, cv.height - 1.5)
     ctx.stroke()
     ctx.globalAlpha = 1
     if (data.length < 2) return
@@ -507,8 +507,11 @@ ShellRoot {
             Layout.preferredHeight: 110
             onWidthChanged: requestPaint()
             onHeightChanged: requestPaint()
+            // Muted draws the flat line in the mute accent, not cMuted: a
+            // near-invisible grey line reads as a broken graph, not as gated.
             onPaint: root.paintSeries(this, root.micHist, 100,
-              (root.levelOn && !root.micMuted) ? String(root.cGreen) : String(root.cMuted))
+              !root.levelOn ? String(root.cMuted)
+                : root.micMuted ? String(root.cRed) : String(root.cGreen))
           }
 
           // "them" label above its own graph, then the verdict caption: a
