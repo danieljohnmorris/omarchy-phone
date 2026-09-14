@@ -81,12 +81,19 @@ reconcile() {
     # mixer before q6voiced opens rx makes that open fail and the call has no
     # downlink at all. This flip runs at call setup, i.e. exactly that window,
     # so re-applying eagerly is what made "speaker" look permanently broken.
+    # Detached: reconcile still owes the ringing UI a raise and SMS handling
+    # below, so a synchronous wait here would delay the incoming-call window by
+    # up to 3s. The profile flip above stays synchronous; only the re-apply
+    # (which must land *after* the FE opens) runs in the background.
     if [ "$want" = "Voice Call" ] && [ -r "$HOME/.local/state/fajita/call-route" ]; then
-      for _ in 1 2 3 4 5 6 7 8 9 10; do
-        [ -n "$(pcm_state pcm6p)" ] && [ "$(pcm_state pcm6p)" != closed ] && break
-        sleep 0.3
-      done
-      fajita-call-route "$(cat "$HOME/.local/state/fajita/call-route")" >/dev/null 2>&1 || true
+      (
+        for _ in 1 2 3 4 5 6 7 8 9 10; do
+          s=$(pcm_state pcm6p)
+          [ -n "$s" ] && [ "$s" != closed ] && break
+          sleep 0.3
+        done
+        fajita-call-route "$(cat "$HOME/.local/state/fajita/call-route")" >/dev/null 2>&1 || true
+      ) &
     fi
     # Log the flip and the q6voice FE state with it: the only open question on
     # call audio is what pcm6{p,c} do during a *connected* call, and an
