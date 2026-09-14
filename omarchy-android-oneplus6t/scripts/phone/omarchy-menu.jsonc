@@ -30,15 +30,12 @@
     "when": "true",
     "action": "hyprctl dispatch 'hl.dsp.window.close()'"
   },
-  // Shutdown is hidden: a clean poweroff cannot be undone from the phone.
-  // The power button will not cold-start it afterwards (OPH-16), so the row
-  // was a one-way door with no on-device recovery. `when` is a shell test and
-  // the row only renders on exit 0, so "false" removes it without patching
-  // Omarchy. Use Reboot to get a fresh boot; to power off deliberately, run
-  // `systemctl poweroff` over ssh and be ready to recover from the host.
-  "system.shutdown": {
-    "when": "false"
-  },
+  // Shutdown row: upstream's, shown as-is (systemctl poweroff is passwordless
+  // via 50-fajita-power.rules). The OPH-16 trap is unchanged: after a clean
+  // poweroff the power key alone will not cold-start the device; recovery is
+  // charger attach, a 20-25 s Power hold, or the fastboot combo. README has
+  // the details.
+
   // Theme, normally under Style, mirrored into System so it is reachable from
   // the power key: fajita-power-key opens `omarchy-menu toggle system`, which
   // is the only menu a phone with no keyboard can summon. Same action as
@@ -48,25 +45,6 @@
     "label": "Theme",
     "description": "Wallpaper previews, tap to apply",
     "action": "theme=$(omarchy-theme-switcher); [[ -n $theme ]] && omarchy-theme-set \"$theme\""
-  },
-  // Calls and Messages: standalone Quickshell apps under ~/.config/fajita,
-  // launched as normal windows so they tile (two open = 50/50) and the OSK
-  // can raise itself over a focused text field. fajita-app does the launching
-  // for every entry point (these rows, the .desktop files, the watcher): it
-  // focuses an existing window and otherwise verifies a fresh one maps, since
-  // a bare `ipc call … show` is answered by a windowless instance left over
-  // from a shell restart and then nothing appears at all.
-  "system.calls": {
-    "icon": "󰎠",
-    "label": "Calls",
-    "description": "Dialer and live calls",
-    "action": "fajita-app calls"
-  },
-  "system.messages": {
-    "icon": "󰍡",
-    "label": "Messages",
-    "description": "SMS conversations",
-    "action": "fajita-app messages"
   },
   "system.bootloader": {
     "icon": "󰚥",

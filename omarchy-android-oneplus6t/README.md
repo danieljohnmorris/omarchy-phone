@@ -143,10 +143,9 @@ what doesn't is at the bottom.
   reported `battery-voltage: 4325` and `battery-soc-ok: yes`. Recovery is
   cable-in (the PMIC cold-boots on charger attach), a 20-25 s Power hold, or
   the fastboot combo followed by `fastboot reboot`. The `system.shutdown` row
-  is therefore hidden with `"when": "false"` in the menu extension, which also
-  blanks its action, so the trap cannot be reached from the phone; use
-  `fajita-screen-off`, or `systemctl poweroff` over ssh when a real power-off
-  is wanted and a host is at hand to recover it.
+  is upstream's and shown deliberately: a phone whose own power menu cannot
+  power it off reads as broken, and the recovery paths are documented above.
+  `systemctl poweroff` over ssh remains available when a host is at hand.
 - **The power key reaches logind and then dies there, so a dark panel looks
   like a dead phone.** logind logged 16 `Power key pressed short` events across
   one 5 h 44 m boot while `fajita-power-key` ran zero times. `HandlePowerKey`
@@ -450,7 +449,7 @@ rediscover the hard way:
 ### Calls and SMS
 
 Two standalone Quickshell apps under `~/.config/fajita`, launched from the
-power-key menu ("Calls", "Messages") or by the watcher on an event:
+Apps menu (`calls.desktop` / `messages.desktop`) or by the watcher on an event:
 
 - `calls.qml` — dialer (keypad) when idle, live call screen (accept/hangup,
   duration) while ModemManager has a call. Talks to `fajita-call`.
@@ -499,9 +498,9 @@ power-key menu ("Calls", "Messages") or by the watcher on an event:
   `if (!root.open) root.toggle()` (`messages.qml:211`), and `root.open` was
   still true from before the restart. Success without a window means the `||`
   fallback never ran and tapping the row did nothing at all.
-  `fajita-app calls|messages` is now the single launch path for
-  the menu rows, the `.desktop` entries and the watcher: it focuses an existing
-  *mapped* window (matched on `hyprctl clients` title), otherwise reaps any
+  `fajita-app calls|messages` is the single launch path for the `.desktop`
+  entries and the watcher: it focuses an existing *mapped* window (matched on
+  `hyprctl clients` title), otherwise reaps any
   instance matching `quickshell -p <that qml>` and respawns under `setsid`,
   waiting until the window really appears. It forwards ipc args too, so
   `fajita-app messages open +44…` still lands on that conversation.
@@ -733,16 +732,15 @@ second instead of timing out at 25s. That survives a hands-off `systemctl
 restart ModemManager`: the unit retries until the bearer is up, reconfigures
 the interface on whatever /64 the network grants, and sending works again with
 no intervention.
-Both apps also appear in the Apps menu via `calls.desktop`/`messages.desktop`
-as well as the power-key menu.
+Both apps appear in the Apps menu via `calls.desktop`/`messages.desktop`.
 
-Not working: calls. Since 81voltd they sit in `dialing` indefinitely rather
-than terminating, so the SIP leg is attempted, but none has connected and a
-call carrying audio has never been observed — 81voltd supplies the IMS data
-bearer only, not SIP signalling or media. Incoming calls were last tested
-before 81voltd, when the network did not page the device at all; that needs
-re-testing with the IMS bearer up. See
-"VoLTE: 81voltd closes most of the gap". Bluetooth (firmware loads, HCI
+Partly working: calls. They reach `active` on the modem (twice on 14 Sep,
+07:17:12-19 and 07:17:48-54, dialing -> ringing-out -> active) and an inbound
+call reached `ringing-in` (07:20:13). What is *not* verified is audio on a
+connected call: no live sample of `pcm6{p,c}` while `active` exists, and the
+watcher now logs the FE state on every profile flip to close that gap on the
+next call. 81voltd supplies the IMS data bearer, not SIP signalling or media.
+See "VoLTE: 81voltd closes most of the gap". Bluetooth (firmware loads, HCI
 reset times out). I haven't tried the camera or sensors.
 
 Tested only on a OnePlus 6T (fajita) with Omarchy 4.0.2 and Hyprland 0.56.2.
