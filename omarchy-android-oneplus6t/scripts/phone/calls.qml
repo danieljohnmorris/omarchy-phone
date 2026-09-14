@@ -413,8 +413,13 @@ ShellRoot {
     title: "calls"
     color: root.cBg
     visible: root.open
-    implicitWidth: 540
-    implicitHeight: 1080
+    // Size from the screen, never a literal: Qt reports logical pixels (540 x
+    // 1170 here; the panel is 1080 x 2340 at scale 2), and the hardcoded
+    // 540x1080 this replaced was already 90px short of the real height. The
+    // compositor tiles this window, so the implicit size is only a hint —
+    // but a hint that tracks the device instead of one build of one phone.
+    implicitWidth: Screen.width
+    implicitHeight: Screen.height
     // Any close path that hides the window (compositor close, menu Close
     // app) must not orphan a live call either — the ✕ button cannot be the
     // only one that hangs up. Idempotent with closeAndHangup. Clearing open
