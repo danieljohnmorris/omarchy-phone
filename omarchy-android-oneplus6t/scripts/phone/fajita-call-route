@@ -51,18 +51,24 @@ cap() { amixer -c0 -q cset name="'VoiceMMode1 Capture Mixer $1'" "$2" 2>/dev/nul
 cx()  { amixer -c0 -q cset name="$1" "$2" 2>/dev/null \
           || echo "warn: control '$1'" >&2; }
 
-# Mic gating is a DIGITAL GAIN on the TX7 decimator, never an AFE capture
+# Mic gating is a DIGITAL GAIN on the capture decimators, never an AFE capture
 # mixer or a codec mux. Measured 2026-09-14 mid-call, per mute/unmute cycle:
 #   VoiceMMode1 Capture Mixer SLIMBUS_0_TX off/on -> "Port Closed TX port 7"
 #     and no re-open: the ADSP voice TX is dead for the rest of the call, so
 #     the far end hears nothing after one mute or route switch (the bug).
 #   ADC MUX7 ZERO/AMIC -> occasional "underflow error on TX port 7".
 #   DEC7 Volume 0/84   -> no kernel events at all.
-# DEC7 Volume advertises mute=1 with min = -84 dB, so 0 is true silence; it is
-# also the decimator the level meter reads, so a muted graph reads 0 honestly.
+# The decimator volumes advertise mute=1 with min = -84 dB, so 0 is true
+# silence; DEC7 is also what the level meter reads, so a muted graph reads 0.
+#
+# Both decimators are gated, not just the active one: DEC7 carries the bottom
+# mic (earpiece/speaker routes, SLIMBUS_0_TX) and DEC0 the headset mic
+# (SLIMBUS_2_TX). Gating only DEC7 left a headset call unmutable, and a route
+# switch while muted would otherwise hand the far end a live mic.
 MIC_GAIN=84
 mic_gate() { # on|off
-  if [ "$1" = off ]; then cx 'DEC7 Volume' 0; else cx 'DEC7 Volume' "$MIC_GAIN"; fi
+  if [ "$1" = off ]; then cx 'DEC7 Volume' 0; cx 'DEC0 Volume' 0
+  else cx 'DEC7 Volume' "$MIC_GAIN"; cx 'DEC0 Volume' "$MIC_GAIN"; fi
 }
 # Route arms must not silently unmute: re-apply the gate after each switch.
 reassert_mute() {
@@ -86,6 +92,17 @@ hp_off() {
   cx 'CDC_IF TX0 MUX' ZERO; cx 'ADC MUX0' ZERO; cx 'AMIC MUX0' ZERO
 }
 
+# Loudspeaker amp (tfa9894, i2c 4-0034) DSP profile. The amp exposes
+# 'mono Profile' with MUSIC_48000 / VOICE_48000 / MMITest_48000; it sits at
+# MUSIC_48000 permanently because nothing selected otherwise, so a speakerphone
+# call ran call audio through the music tuning. VOICE_48000 is the vendor
+# profile for narrowband voice. Non-fatal: on a kernel without the amp the
+# control is absent and cx warns.
+amp_profile() { # MUSIC_48000|VOICE_48000
+  [ -n "$(amixer -c0 cget name="'mono Profile'" 2>/dev/null)" ] || return 0
+  cx 'mono Profile' "$1"
+}
+
 case "${1:-query}" in
   earpiece)
     vx  SLIMBUS_0_RX on
@@ -93,6 +110,7 @@ case "${1:-query}" in
     cx 'RX INT0 DEM MUX' CLSH_DSM_OUT
     cx 'RX INT0_1 MIX1 INP0' RX0
     vx  SLIMBUS_1_RX off; vx QUAT_MI2S_RX off; hp_off
+    amp_profile MUSIC_48000
     capq SLIMBUS_0_TX on;  capq SLIMBUS_2_TX off
     reassert_mute
     ;;
@@ -105,6 +123,7 @@ case "${1:-query}" in
       FAJITA_ROUTE_NO_SAVE=1 exec "$0" earpiece
     fi
     vx  QUAT_MI2S_RX on
+    amp_profile VOICE_48000
     vx  SLIMBUS_0_RX off; vx SLIMBUS_1_RX off; hp_off
     cx 'RX INT0_1 MIX1 INP0' ZERO
     capq SLIMBUS_0_TX on;  capq SLIMBUS_2_TX off
@@ -120,6 +139,7 @@ case "${1:-query}" in
     cx 'AIF3_CAP Mixer SLIM TX0' 1
     cx 'CDC_IF TX0 MUX' DEC0; cx 'ADC MUX0' AMIC; cx 'AMIC MUX0' ADC2
     vx  SLIMBUS_0_RX off; vx QUAT_MI2S_RX off
+    amp_profile MUSIC_48000
     cx 'RX INT0_1 MIX1 INP0' ZERO
     capq SLIMBUS_0_TX off
     reassert_mute
@@ -137,7 +157,9 @@ case "${1:-query}" in
     ;;
   mic-query)
     # Kernel truth, not the state file: an external cset (or a stale file)
-    # would otherwise make the UI label disagree with the hardware.
+    # would otherwise make the UI label disagree with the hardware. DEC7 alone
+    # answers for every route because mic_gate always moves DEC7 and DEC0
+    # together, so they cannot disagree.
     [ "$(amixer -c0 cget name="'DEC7 Volume'" 2>/dev/null |
           sed -n 's/.*: values=//p')" = 0 ] && echo off || echo on
     exit 0
