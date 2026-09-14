@@ -451,8 +451,11 @@ rediscover the hard way:
 Two standalone Quickshell apps under `~/.config/fajita`, launched from the
 Apps menu (`calls.desktop` / `messages.desktop`) or by the watcher on an event:
 
-- `calls.qml` — dialer (keypad) when idle, live call screen (accept/hangup,
-  duration) while ModemManager has a call. Talks to `fajita-call`.
+- `calls.qml` — Recents (number/direction/missed/duration from the watcher's
+  call log) and dialer (keypad) when idle, live call screen (accept/hangup,
+  duration) while ModemManager has a call. Talks to `fajita-call`. Closing the
+  window (✕, Close app, compositor close) hangs up any live call first —
+  nothing else owns hang-up once the app is gone.
 - `messages.qml` — thread list, conversation, new message. Talks to
   `fajita-sms`; history is `~/.local/state/fajita/messages.jsonl` (one JSON
   object per line, the helper is the only writer).
@@ -608,17 +611,18 @@ bearer rather than hardcoding it (the prefix changes between PDN sessions —
 verified by a recovery that came up on a different /64). NetworkManager never
 touches this interface; data stays on `qmapmux0.0` via the `three` profile.
 
-One thing is still untested rather than broken:
+One thing is broken rather than misconfigured:
 
-- **Calls connect; audio on a connected call is unverified.** With the IMS
-  bearer up, dials went `dialing -> ringing-out -> active -> terminated` (two on
-  14 Sep, 07:17:12-19 and 07:17:48-54, ~7s and ~6s in `active`) and an inbound
-  call reached `ringing-in` (07:20:13); before 81voltd the same dial terminated
-  in ~7-25s and inbound never paged the device at all. The card profile flips to
-  `Voice Call` and q6voiced opens both `pcm6` substreams while dialing, but no
-  sample of the PCM state exists for a call while `active`; the watcher now logs
-  it on every profile flip, so the next call settles it. 81voltd provides the
-  IMS *data* bearer only, not SIP signalling or media.
+- **Calls connect but carry no audio; every host-side piece is now verified
+  correct.** Sampled live during a clean 14 Sep 19:16 call (no host captures):
+  profile `Voice Call`, `_verb` applied, both q6voice mixers `on`
+  (`SLIMBUS_0_RX…VoiceMMode1`, `VoiceMMode1 Capture…SLIMBUS_0_TX`),
+  earpiece/mic muxes set, both `pcm6` substreams open — yet the FEs sat
+  `PREPARED` for the whole call (never `RUNNING`) and the kernel logged zero
+  q6voice/SLIM events. The modem completes SIP call control but never starts
+  the ADSP media session. That is upstream's missing piece — the financed
+  pmOS q6voice project (May 2026) targets exactly this codec-to-codec path.
+  81voltd provides the IMS *data* bearer only, not media.
   The shipped `sdm845-mainline/alsa-ucm-conf` fajita profile *does* carry a
   full `Voice Call` verb (`ucm2/OnePlus/fajita/VoiceCall.conf`): it wires the
   q6voice FE both ways (`SLIMBUS_0_RX Voice Mixer VoiceMMode1`,

@@ -233,7 +233,7 @@ ssh $PH 'mkdir -p ~/.local/bin ~/.config/fajita ~/.config/systemd/user ~/.local/
 # and the watcher: it verifies a window actually maps instead of trusting an
 # `ipc call … show`, which a windowless instance left by a shell restart
 # answers happily while nothing appears.
-scp -q "$HERE/phone/fajita-call" "$HERE/phone/fajita-sms" "$HERE/phone/fajita-call-watch" "$HERE/phone/fajita-app" "$HERE/phone/fajita-call-audio-diag" $PH:.local/bin/
+scp -q "$HERE/phone/fajita-call" "$HERE/phone/fajita-sms" "$HERE/phone/fajita-call-watch" "$HERE/phone/fajita-app" "$HERE/phone/fajita-call-audio-diag" "$HERE/phone/fajita-osk-show" $PH:.local/bin/
 scp -q "$HERE/phone/calls.qml" "$HERE/phone/messages.qml" $PH:.config/fajita/
 scp -q "$HERE/phone/fajita-call-watch.service" $PH:.config/systemd/user/
 # Desktop entries so both apps appear in the Apps menu ("launch something" on

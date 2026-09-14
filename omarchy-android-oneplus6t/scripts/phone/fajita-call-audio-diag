@@ -45,7 +45,7 @@ sample() { # sets: line, n_calls, p_state p_dp, c_state c_dc
   p_dp=$((p_hw - ${p_hw_prev:-$p_hw})); p_hw_prev=$p_hw
   c_dc=$((c_hw - ${c_hw_prev:-$c_hw})); c_hw_prev=$c_hw
 
-  local prof rate verdict
+  # verdict stays global: the --sample loop reads it after sample returns.
   prof=$(pactl list cards 2>/dev/null | awk -v c="$CARD" '
     $1 == "Name:" { n = $2 }
     /Active Profile:/ && n == c { $1 = $2 = ""; gsub(/^[ :]+|[ :]+$/, ""); print; exit }')
@@ -61,14 +61,14 @@ sample() { # sets: line, n_calls, p_state p_dp, c_state c_dc
   else verdict=FE_PARTIAL
   fi
 
+  # Base telemetry every tick; routing fields append only while a call is up.
+  line="$(date +%H:%M:%S) calls=$n_calls pcm6p=${p_state}/+${p_dp} pcm6c=${c_state}/+${c_dc} profile=${prof:-?} rate=$rate $verdict"
 
-  # Routing state, only while a call is up (keeps idle ticks short).
   if [ "$n_calls" -gt 0 ]; then
     local v
     v=$(alsaucm -c 0 get _verb 2>/dev/null || alsaucm -c O6T get _verb 2>/dev/null)
     v=${v##*: }; v=${v//[[:space:]]/_}; v=${v:-none}
-    line="$line verb=$v vrx=$(cval 'SLIMBUS_0_RX Voice Mixer VoiceMMode1')"\
-" vtx=$(cval 'VoiceMMode1 Capture Mixer SLIMBUS_0_TX') inp0=$(cval 'RX INT0_1 MIX1 INP0') adcmux7=$(cval 'ADC MUX7') amicmux7=$(cval 'AMIC MUX7')"
+    line="$line verb=$v vrx=$(cval 'SLIMBUS_0_RX Voice Mixer VoiceMMode1') vtx=$(cval 'VoiceMMode1 Capture Mixer SLIMBUS_0_TX') inp0=$(cval 'RX INT0_1 MIX1 INP0') adcmux7=$(cval 'ADC MUX7') amicmux7=$(cval 'AMIC MUX7')"
   fi
 }
 
