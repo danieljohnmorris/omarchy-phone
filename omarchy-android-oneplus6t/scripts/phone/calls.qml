@@ -235,7 +235,8 @@ ShellRoot {
     running: false
     command: ["bash", "-lc",
       "fajita-call list; echo __ACTIVE__; cat ~/.local/state/fajita/call-active 2>/dev/null; " +
-      "echo __FE__; grep -m1 '^state' /proc/asound/card0/pcm6p/sub0/status 2>/dev/null"]
+      "echo __FE__; { grep -m1 '^state' /proc/asound/card0/pcm6p/sub0/status 2>/dev/null " +
+      "|| echo 'state: closed'; }"]
     property var out: []
     property bool inActive: false
     property bool inFe: false
