@@ -2,12 +2,12 @@
 // ("Calls" row) or by fajita-call-watch on call events; toggled by
 // `quickshell -p ~/.config/fajita/calls.qml ipc call fajita-calls toggle`.
 //
-// Calls panel, same overlay shape as notif.qml/quicksettings.qml: a themed
-// card under the bar, tap outside to dismiss — not a full-screen surface.
-// Keypad dialer when idle, live call rows (accept/decline/hang up) when
-// ModemManager has calls. Everything shells out to fajita-call (mmcli);
-// audio's FE/profile plumbing is q6voiced + fajita-call-watch; the output
-// picker below switches it at runtime via fajita-call-route.
+// A normal Hyprland window (xdg-toplevel), not a layer-shell overlay: it
+// tiles like any other app. Keypad dialer when idle, live call rows
+// (accept/decline/hang up) when ModemManager has calls. Everything shells
+// out to fajita-call (mmcli); audio's FE/profile plumbing is q6voiced +
+// fajita-call-watch; the output picker switches routes at runtime via
+// fajita-call-route.
 //
 // Standalone Quickshell process, same pattern as notif.qml: first spawn
 // shows itself, an existing instance answers ipc `toggle`, quits 15s after
@@ -28,8 +28,9 @@ ShellRoot {
   property string tab: "recents"  // idle view: "recents" | "keypad"
   property var log: []            // call log [{ts,dir,number,answered,dur}] oldest first
   property string callRoute: "earpiece" // live-call output: earpiece|speaker|headset
-  property bool micMuted: false   // uplink gated at the AFE capture mixers
-  property var audioTicks: []     // [{v:0..1}] mic RMS per 0.5s, newest last (max 60)
+  property bool levelOn: true // mic strip on by default (asked-for feature); tap "level" to disable for a capture-free call
+  property bool micMuted: false // uplink gated at the AFE capture mixers; seeded from kernel truth
+  property var audioTicks: []   // [{v:0..1}] dB-scaled mic level per 0.5s, newest last (max 60)
   property string lastError: ""
 
   // Pre-load fallbacks only; every colour below is replaced from the active
@@ -75,6 +76,8 @@ ShellRoot {
       colors.reload() // stale palette if a theme switched while we ran hidden
       rescan.running = true // restarting a running Process re-runs it
       logLoad.running = true
+
+      micQuery.running = true // seed the mute button from kernel state
       quitTimer.stop()
     }
   }
@@ -171,11 +174,25 @@ ShellRoot {
   Process {
     id: rescan
     running: false
-    command: ["bash", "-lc", "fajita-call list"]
+    command: ["bash", "-lc",
+      "fajita-call list; echo __ACTIVE__; cat ~/.local/state/fajita/call-active 2>/dev/null"]
     property var out: []
-    onRunningChanged: if (running) out = []
+    property bool inActive: false
+    onRunningChanged: { out = []; inActive = false }
     stdout: SplitParser {
       onRead: data => {
+        if (data.trim() === "__ACTIVE__") { rescan.inActive = true; return }
+        if (rescan.inActive) {
+          // path|epoch from the watcher. Overwrites unconditionally: the
+          // list lines above run first in this same stream and stamp
+          // Date.now(), so a guarded seed would never win — a respawned
+          // instance must take the watcher's first-active epoch instead,
+          // every tick, or live-call durations restart at 0:00.
+          var a = data.split("|")
+          if (a.length === 2)
+            root.callStart[a[0]] = parseInt(a[1], 10) * 1000
+          return
+        }
         var p = data.split("|")
         if (p.length < 4 || p[0].indexOf("/Call/") < 0) return
         var c = { path: p[0], state: p[1], dir: p[2], number: p[3] || "unknown" }
@@ -224,27 +241,20 @@ ShellRoot {
     onTriggered: if (!rescan.running) rescan.running = true
   }
 
-  // Mic level over time: a continuous capture of hw:0,1 (MultiMedia2, the
-  // bottom-mic path) runs while any call is live; a python one-liner reduces
-  // each 0.5s of S16 to an RMS and prints 0-100, which becomes one bar.
-  // The voice FE itself is hostless and unreadable, and the earpiece leg has
-  // no host tap at all, so the mic is the only measurable direction. The
-  // capture also powers the shared SLIM TX7 path, which is why it stays open
-  // for the whole call — opening/closing it mid-call tears the port down.
+  // Mic level over time, opt-in via the strip's chip: fajita-call-level
+  // holds a persistent hw:0,1 capture (MultiMedia2, the bottom-mic path)
+  // and prints one dB-scaled 0-100 value per 0.5s, which becomes one bar.
+  // The voice FE itself is hostless and unreadable, and the earpiece leg
+  // has no host tap at all, so the mic is the only measurable direction.
+  // The capture shares SLIM TX7 with the voice uplink — it both contaminates
+  // clean-call testing and keeps that port powered — which is exactly why it
+  // runs only while enabled. The helper owns arecord and reaps it on
+  // SIGTERM, so hw:0,1 is never left held by a dead replayer.
   Process {
     id: levelProbe
-    running: root.open && root.calls.length > 0
-    command: ["bash", "-lc",
-      "arecord -D hw:0,1 -f S16_LE -r 16000 -c 1 2>/dev/null | python3 -u -c '" +
-      "import sys,struct" + "\n" +
-      "while True:" + "\n" +
-      "  b = sys.stdin.buffer.read(16000)" + "\n" +
-      "  if not b: break" + "\n" +
-      "  n = len(b)//2" + "\n" +
-      "  if n == 0: continue" + "\n" +
-      "  v = [x if x < 32768 else x - 65536 for x in struct.unpack(\"<%dh\" % n, b[:n*2])]" + "\n" +
-      "  rms = (sum(x*x for x in v)/n) ** 0.5" + "\n" +
-      "  print(min(100, int(rms/3)))'"]
+    running: root.open && root.calls.length > 0 && root.levelOn
+    command: ["bash", "-lc", "exec fajita-call-level"]
+    onRunningChanged: if (running) root.audioTicks = []
     stdout: SplitParser {
       onRead: data => {
         var n = parseInt(data.trim(), 10)
@@ -253,6 +263,18 @@ ShellRoot {
         if (t.length > 60) t = t.slice(t.length - 60)
         root.audioTicks = t
       }
+    }
+  }
+
+  // Seed the mute button from kernel truth: the AFE gate outlives this
+  // process, so a fresh instance must not assume "unmuted" — the uplink may
+  // still be gated from an earlier call.
+  Process {
+    id: micQuery
+    running: false
+    command: ["bash", "-lc", "fajita-call-route mic-query"]
+    stdout: SplitParser {
+      onRead: data => { root.micMuted = data.trim() === "off" }
     }
   }
   // Duration clock: callStart is a plain object, so mutating it never
@@ -351,30 +373,57 @@ ShellRoot {
           }
         }
 
-        // Mic level over time: one bar per 0.5s sample from the levelProbe
-        // capture — height is the RMS, green means sound. The voice FE is
-        // hostless and the earpiece leg has no host tap, so your mic is the
-        // one direction that can actually be drawn.
+        // Mic level over time (opt-in): one bar per 0.5s sample from
+        // fajita-call-level — height is dB-scaled loudness, green means
+        // sound. The chip enables/disables the capture itself; see the
+        // levelProbe comment for why it must not always run.
         ColumnLayout {
           visible: root.calls.length > 0
           Layout.fillWidth: true
           spacing: 4
 
+          Rectangle {
+            Layout.alignment: Qt.AlignHCenter
+            Layout.preferredWidth: levelLbl.implicitWidth + 24
+            Layout.preferredHeight: 28
+            radius: 8
+            color: root.levelOn ? root.cAccent : root.cRow
+
+            Text {
+              id: levelLbl
+              anchors.centerIn: parent
+              text: root.levelOn ? "level ✓" : "level"
+              color: root.levelOn ? root.cBg : root.cMuted
+              font.family: "JetBrainsMono Nerd Font"
+              font.pixelSize: 11
+            }
+            MouseArea {
+              anchors.fill: parent
+              onClicked: root.levelOn = !root.levelOn
+            }
+          }
+
           Row {
+            visible: root.levelOn
             spacing: 2
             Layout.fillWidth: true
             Layout.alignment: Qt.AlignHCenter
+            Layout.preferredHeight: 36
+
             Repeater {
               model: root.audioTicks
               Rectangle {
                 required property var modelData
-                width: 8; height: 4 + 30 * modelData.v; radius: 2
+                width: 8
+                height: 4 + 30 * modelData.v
+                radius: 2
+                anchors.bottom: parent.bottom // bars grow from the baseline
                 color: modelData.v > 0.05 ? root.cGreen : root.cRow
-
               }
             }
           }
           Text {
+            visible: root.levelOn
             text: "your mic — bars move while you are audible"
             color: root.cMuted
             font.family: "JetBrainsMono Nerd Font"

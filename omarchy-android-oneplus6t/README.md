@@ -635,11 +635,12 @@ One thing is broken rather than misconfigured:
   full `Voice Call` verb (`ucm2/OnePlus/fajita/VoiceCall.conf`): it wires the
   q6voice FE both ways (`SLIMBUS_0_RX Voice Mixer VoiceMMode1`,
   `VoiceMMode1 Capture Mixer SLIMBUS_0_TX`) plus earpiece (RX0/AIF1_PB) and
-  bottom-mic (TX7/DEC7/AMIC4) routing, and the watcher's profile flip is what
-  applies it. So every component needed for call audio exists on the box;
-  `fajita-call-audio-diag NUMBER` (dial, sample, dump `_verb`/csets/journal)
-  is the one remaining test. Rate is not a suspect: q6voiced opens+prepares
-  but never writes (hostless), so its 8 kHz pcm_config is decorative.
+  bottom-mic (TX7/DEC7/AMIC4) routing — and the FE mixers are even held `on`
+  by HiFi's EnableSequence, so they read `on` regardless of which profile is
+  active; the verb's real work is the codec muxes. Rate is not a suspect
+  either: q6voiced opens+prepares but never writes (hostless), so its 8 kHz
+  pcm_config is decorative. `fajita-call-audio-diag NUMBER` captured all of
+  the above live (14 Sep); re-run it after any ADSP-side change.
 
 **81voltd needs verify-and-retry, not a precondition.** The modem asks for its
 IMS PDN exactly once, when the service appears on QRTR, and 81voltd makes one

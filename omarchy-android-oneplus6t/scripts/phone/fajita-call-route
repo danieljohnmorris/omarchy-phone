@@ -34,6 +34,14 @@ cap() { amixer -c0 -q cset name="'VoiceMMode1 Capture Mixer $1'" "$2" 2>/dev/nul
 cx()  { amixer -c0 -q cset name="$1" "$2" 2>/dev/null \
           || echo "warn: control '$1'" >&2; }
 
+# Route arms re-enable their capture mixer, so a route switch mid-mute would
+# silently unmute the uplink while the UI still shows muted. Every arm ends
+# with this: re-gate the capture mixers when the mic is muted.
+reassert_mute() {
+  [ -f "$MIC" ] && { cap SLIMBUS_0_TX off; cap SLIMBUS_2_TX off; }
+  return 0
+}
+
 # Headset codec-path teardown, mirroring the Headphones SectionDevice's
 # DisableSequence (COMP off, HP mixer inputs ZERO, headset-mic chain ZERO).
 hp_off() {
@@ -51,12 +59,14 @@ case "${1:-query}" in
     cx 'RX INT0_1 MIX1 INP0' RX0
     vx  SLIMBUS_1_RX off; vx QUAT_MI2S_RX off; hp_off
     cap SLIMBUS_0_TX on;  cap SLIMBUS_2_TX off
+    reassert_mute
     ;;
   speaker)
     vx  QUAT_MI2S_RX on
     vx  SLIMBUS_0_RX off; vx SLIMBUS_1_RX off; hp_off
     cx 'RX INT0_1 MIX1 INP0' ZERO
     cap SLIMBUS_0_TX on;  cap SLIMBUS_2_TX off
+    reassert_mute
     ;;
   headset)
     vx  SLIMBUS_1_RX on
@@ -70,6 +80,7 @@ case "${1:-query}" in
     vx  SLIMBUS_0_RX off; vx QUAT_MI2S_RX off
     cx 'RX INT0_1 MIX1 INP0' ZERO
     cap SLIMBUS_0_TX off
+    reassert_mute
     ;;
   mic)
     # Mute = gate the hostless uplink into the modem at the AFE capture
