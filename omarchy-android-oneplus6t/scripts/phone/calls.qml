@@ -6,7 +6,8 @@
 // card under the bar, tap outside to dismiss — not a full-screen surface.
 // Keypad dialer when idle, live call rows (accept/decline/hang up) when
 // ModemManager has calls. Everything shells out to fajita-call (mmcli);
-// audio routing is q6voiced + fajita-call-watch, not this UI.
+// audio's FE/profile plumbing is q6voiced + fajita-call-watch; the output
+// picker below switches it at runtime via fajita-call-route.
 //
 // Standalone Quickshell process, same pattern as notif.qml: first spawn
 // shows itself, an existing instance answers ipc `toggle`, quits 15s after
@@ -23,10 +24,12 @@ ShellRoot {
   property var calls: []          // [{path,state,dir,number}]
   property string dial: ""        // number being typed
   property var callStart: ({})    // path -> epoch ms when first seen active
+  property double now: 0          // bumped per second; re-evaluates duration bindings
   property string tab: "recents"  // idle view: "recents" | "keypad"
   property var log: []            // call log [{ts,dir,number,answered,dur}] oldest first
   property string callRoute: "earpiece" // live-call output: earpiece|speaker|headset
-  property var audioTicks: []      // [{p,c}] FE state per second, newest last (max 40)
+  property bool micMuted: false   // uplink gated at the AFE capture mixers
+  property var audioTicks: []     // [{v:0..1}] mic RMS per 0.5s, newest last (max 60)
   property string lastError: ""
 
   // Pre-load fallbacks only; every colour below is replaced from the active
@@ -98,7 +101,7 @@ ShellRoot {
       case "incoming":
       case "ringing-in": return "incoming call"
       case "active":
-        var s = Math.max(0, (Date.now() - (root.callStart[path] || Date.now())) / 1000)
+        var s = Math.max(0, (root.now - (root.callStart[path] || root.now)) / 1000)
         return Math.floor(s / 60) + ":" + ("0" + Math.floor(s % 60)).slice(-2)
       case "held": return "on hold"
       case "terminated": return "ended"
@@ -221,31 +224,46 @@ ShellRoot {
     onTriggered: if (!rescan.running) rescan.running = true
   }
 
-  // Audio-over-time strip: per-second samples of both voice-FE substream
-  // states. This is the honest observable (hostless FEs never move hw_ptr);
-  // RUNNING bars would mean the ADSP session actually started.
+  // Mic level over time: a continuous capture of hw:0,1 (MultiMedia2, the
+  // bottom-mic path) runs while any call is live; a python one-liner reduces
+  // each 0.5s of S16 to an RMS and prints 0-100, which becomes one bar.
+  // The voice FE itself is hostless and unreadable, and the earpiece leg has
+  // no host tap at all, so the mic is the only measurable direction. The
+  // capture also powers the shared SLIM TX7 path, which is why it stays open
+  // for the whole call — opening/closing it mid-call tears the port down.
   Process {
-    id: audioProbe
-    running: false
+    id: levelProbe
+    running: root.open && root.calls.length > 0
     command: ["bash", "-lc",
-      "for d in pcm6p pcm6c; do s=$(sed -n 's/^state: //p' /proc/asound/card0/$d/sub0/status 2>/dev/null | head -1); echo \"${s:-closed}\"; done"]
-    property var out: []
-    onRunningChanged: if (running) out = []
-    stdout: SplitParser { onRead: data => { if (data.trim()) audioProbe.out.push(data.trim()) } }
-    onExited: {
-      if (audioProbe.out.length >= 2) {
-        var t = root.audioTicks.concat([{ p: audioProbe.out[0], c: audioProbe.out[1] }])
-        if (t.length > 40) t = t.slice(t.length - 40)
+      "arecord -D hw:0,1 -f S16_LE -r 16000 -c 1 2>/dev/null | python3 -u -c '" +
+      "import sys,struct" + "\n" +
+      "while True:" + "\n" +
+      "  b = sys.stdin.buffer.read(16000)" + "\n" +
+      "  if not b: break" + "\n" +
+      "  n = len(b)//2" + "\n" +
+      "  if n == 0: continue" + "\n" +
+      "  v = [x if x < 32768 else x - 65536 for x in struct.unpack(\"<%dh\" % n, b[:n*2])]" + "\n" +
+      "  rms = (sum(x*x for x in v)/n) ** 0.5" + "\n" +
+      "  print(min(100, int(rms/3)))'"]
+    stdout: SplitParser {
+      onRead: data => {
+        var n = parseInt(data.trim(), 10)
+        if (isNaN(n)) return
+        var t = root.audioTicks.concat([{ v: n / 100 }])
+        if (t.length > 60) t = t.slice(t.length - 60)
         root.audioTicks = t
       }
     }
   }
+  // Duration clock: callStart is a plain object, so mutating it never
+  // re-evaluates the duration binding above — a stuck "0:00". Bumping this
+  // property every second does.
   Timer {
-    id: audioTimer
+    id: clockTimer
     interval: 1000
     repeat: true
     running: root.open && root.calls.length > 0
-    onTriggered: if (!audioProbe.running) audioProbe.running = true
+    onTriggered: root.now = Date.now()
   }
 
   Timer {
@@ -333,9 +351,10 @@ ShellRoot {
           }
         }
 
-        // Audio over time: one bar per second per direction. green = the
-        // voice FE is RUNNING (audio flowing), accent = open but idle,
-        // row = closed. Flat accent = call up, ADSP session never started.
+        // Mic level over time: one bar per 0.5s sample from the levelProbe
+        // capture — height is the RMS, green means sound. The voice FE is
+        // hostless and the earpiece leg has no host tap, so your mic is the
+        // one direction that can actually be drawn.
         ColumnLayout {
           visible: root.calls.length > 0
           Layout.fillWidth: true
@@ -349,28 +368,14 @@ ShellRoot {
               model: root.audioTicks
               Rectangle {
                 required property var modelData
-                width: 8; height: 22; radius: 2
-                color: modelData.p === "RUNNING" ? root.cGreen
-                     : modelData.p === "PREPARED" ? root.cAccent : root.cRow
-              }
-            }
-          }
-          Row {
-            spacing: 2
-            Layout.fillWidth: true
-            Layout.alignment: Qt.AlignHCenter
-            Repeater {
-              model: root.audioTicks
-              Rectangle {
-                required property var modelData
-                width: 8; height: 22; radius: 2
-                color: modelData.c === "RUNNING" ? root.cGreen
-                     : modelData.c === "PREPARED" ? root.cAccent : root.cRow
+                width: 8; height: 4 + 30 * modelData.v; radius: 2
+                color: modelData.v > 0.05 ? root.cGreen : root.cRow
+
               }
             }
           }
           Text {
-            text: "down / up — green means audio flowing"
+            text: "your mic — bars move while you are audible"
             color: root.cMuted
             font.family: "JetBrainsMono Nerd Font"
             font.pixelSize: 10
@@ -476,6 +481,29 @@ ShellRoot {
                     anchors.fill: parent
                     onClicked: root.setRoute(modelData)
                   }
+                }
+              }
+            }
+
+            // Mic mute: gates the hostless uplink at the AFE capture mixers.
+            Rectangle {
+              Layout.fillWidth: true
+              Layout.preferredHeight: 44
+              radius: 8
+              color: root.micMuted ? root.cRed : root.cRow
+
+              Text {
+                anchors.centerIn: parent
+                text: root.micMuted ? "unmute mic" : "mute mic"
+                color: root.micMuted ? root.cBg : root.cMuted
+                font.family: "JetBrainsMono Nerd Font"
+                font.pixelSize: 13
+              }
+              MouseArea {
+                anchors.fill: parent
+                onClicked: {
+                  root.micMuted = !root.micMuted
+                  root.run("fajita-call-route mic " + (root.micMuted ? "off" : "on"))
                 }
               }
             }

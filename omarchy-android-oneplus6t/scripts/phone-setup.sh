@@ -250,11 +250,35 @@ tar -cf - -C "$HERE/phone" \
     install -m644 /tmp/fdeploy/fajita-call-watch.service ~/.config/systemd/user/
     install -m644 /tmp/fdeploy/calls.desktop /tmp/fdeploy/messages.desktop ~/.local/share/applications/
     rm -rf /tmp/fdeploy'
-ssh $PH 'chmod +x ~/.local/bin/fajita-call ~/.local/bin/fajita-sms ~/.local/bin/fajita-call-watch ~/.local/bin/fajita-app ~/.local/bin/fajita-call-audio-diag ~/.local/bin/fajita-call-route
-  systemctl --user daemon-reload
+ssh $PH 'systemctl --user daemon-reload
   # enable --now is a no-op on an already-running unit, which would leave the
   # previous fajita-call-watch code live after a re-deploy; restart explicitly.
   systemctl --user enable fajita-call-watch.service
   systemctl --user restart fajita-call-watch.service'
+
+# The tar-over-ssh pipe exits 0 even when the remote install failed silently
+# (that is exactly how the 14 Sep scp legs died: "DEPLOY-OK", nothing copied),
+# so verify every shipped file's md5 before calling the deploy done.
+vfail=0
+while IFS=: read -r src dest; do
+  [ -z "$src" ] && continue
+  want=$(md5 -q "$HERE/phone/$src")
+  got=$(ssh -o ConnectTimeout=8 $PH "md5sum ~/$dest 2>/dev/null" | cut -d" " -f1)
+  [ "$want" = "$got" ] || { echo "VERIFY FAIL: $src (device has ${got:-nothing})" >&2; vfail=1; }
+done <<'EOM'
+fajita-call:.local/bin/fajita-call
+fajita-sms:.local/bin/fajita-sms
+fajita-call-watch:.local/bin/fajita-call-watch
+fajita-app:.local/bin/fajita-app
+fajita-call-audio-diag:.local/bin/fajita-call-audio-diag
+fajita-osk-show:.local/bin/fajita-osk-show
+fajita-call-route:.local/bin/fajita-call-route
+calls.qml:.config/fajita/calls.qml
+messages.qml:.config/fajita/messages.qml
+fajita-call-watch.service:.config/systemd/user/fajita-call-watch.service
+calls.desktop:.local/share/applications/calls.desktop
+messages.desktop:.local/share/applications/messages.desktop
+EOM
+[ "$vfail" -eq 0 ] || { echo "deploy verification failed" >&2; exit 1; }
 
 echo "phone setup done"
