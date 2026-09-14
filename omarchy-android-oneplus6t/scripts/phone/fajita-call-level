@@ -1,5 +1,5 @@
 #!/bin/bash
-# Mic level meter for a live call: prints one 0-100 value per 0.5s on stdout,
+# Mic level meter for a live call: prints one 0-100 value per 0.1s on stdout,
 # consumed by calls.qml's opt-in level strip. dB-scaled: 0 = -60 dBFS or
 # quieter, 100 = full scale — linear RMS saturates (speech runs in the
 # thousands on this mic, so min(100, rms/3) pegged every bar at max).
@@ -40,12 +40,16 @@ signal.signal(signal.SIGINT, cleanup)
 # Tick on the wall clock, not on byte count: this capture stalls mid-call
 # (hw:0,1 delivers a fraction of a second then starves while the voice FE owns
 # SLIM TX7), so a blocking read(16000) never completes and the meter printed
-# nothing at all. Emit every 0.5s from whatever arrived — a starved capture
+# nothing at all. Emit every 0.1s from whatever arrived — a starved capture
 # then reads as a flat zero line instead of a blank, never-updating graph.
+# 0.1s (1600 frames) is the graph sample rate: at 0.5s speech rendered as a
+# visibly jumpy staircase, and the RMS window is short enough to track
+# syllables rather than averaging them flat. No apostrophes below this line:
+# the whole body is a single-quoted python3 -c argument.
 os.set_blocking(arecord.stdout.fileno(), False)
 try:
     buf = b""
-    next_tick = time.monotonic() + 0.5
+    next_tick = time.monotonic() + 0.1
     while arecord.poll() is None:
         timeout = max(0.0, next_tick - time.monotonic())
         if select.select([arecord.stdout], [], [], timeout)[0]:
@@ -54,7 +58,7 @@ try:
                 buf += chunk
         if time.monotonic() < next_tick:
             continue
-        next_tick += 0.5
+        next_tick += 0.1
         n = len(buf) // 2
         rms = 0.0
         if n:

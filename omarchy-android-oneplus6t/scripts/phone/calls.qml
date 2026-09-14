@@ -32,7 +32,12 @@ ShellRoot {
   property bool micMuted: false // uplink gated at the AFE capture mixers; seeded from kernel truth
   property var micHist: []    // "you": mic RMS 0..100 (dB-scaled), newest last
   property var sessHist: []   // "them": 1 = voice FE RUNNING (network sending media), 0.08 = silent
-  readonly property int graphPoints: 60
+  // Points per canvas width. Each series samples at its own rate, so the
+  // spans differ: the mic meter ticks 10x/s (100 pts ~= 10s of history, fine
+  // enough that speech reads as a waveform, not a staircase), the voice-FE
+  // series once per rescan (60 pts = 60s).
+  readonly property int micPoints: 100
+  readonly property int sessPoints: 60
   property string lastError: ""
 
   // Pre-load fallbacks only; every colour below is replaced from the active
@@ -123,7 +128,7 @@ ShellRoot {
 
   // Panel-style history painter (same shape as fajita.cellular Panel.qml):
   // baseline plus a right-aligned line, one series per canvas.
-  function paintSeries(cv, data, fixedPeak, color) {
+  function paintSeries(cv, data, fixedPeak, color, span) {
     var ctx = cv.getContext("2d")
     ctx.clearRect(0, 0, cv.width, cv.height)
     ctx.strokeStyle = String(root.cMuted)
@@ -139,7 +144,7 @@ ShellRoot {
     ctx.lineWidth = 1.5
     ctx.beginPath()
     for (var j = 0; j < data.length; j++) {
-      var x = cv.width - (data.length - 1 - j) * (cv.width / (root.graphPoints - 1))
+      var x = cv.width - (data.length - 1 - j) * (cv.width / (span - 1))
       var y = cv.height - 2 - (data[j] / fixedPeak) * (cv.height - 6)
       if (j === 0) ctx.moveTo(x, y)
       else ctx.lineTo(x, y)
@@ -257,7 +262,7 @@ ShellRoot {
           if (m) {
             var open = m[1] === "PREPARED" || m[1] === "RUNNING"
             var t = root.sessHist.concat([open ? 1 : 0.08])
-            if (t.length > root.graphPoints) t = t.slice(t.length - root.graphPoints)
+            if (t.length > root.sessPoints) t = t.slice(t.length - root.sessPoints)
             root.sessHist = t
             sessGraph.requestPaint()
           }
@@ -324,7 +329,7 @@ ShellRoot {
 
   // Mic level over time, opt-in via the strip's chip: fajita-call-level
   // holds a persistent hw:0,1 capture (MultiMedia2, the bottom-mic path)
-  // and prints one dB-scaled 0-100 value per 0.5s, which becomes one bar.
+  // and prints one dB-scaled 0-100 value per 100ms, which becomes one point.
   // The voice FE itself is hostless and unreadable, and the earpiece leg
   // has no host tap at all, so the mic is the only measurable direction.
   // The capture shares SLIM TX7 with the voice uplink — it both contaminates
@@ -344,7 +349,7 @@ ShellRoot {
         // sample to zero instead of drawing your (still-captured) voice.
         if (root.micMuted) n = 0
         var t = root.micHist.concat([n])
-        if (t.length > root.graphPoints) t = t.slice(t.length - root.graphPoints)
+        if (t.length > root.micPoints) t = t.slice(t.length - root.micPoints)
         root.micHist = t
         micGraph.requestPaint()
       }
@@ -516,7 +521,8 @@ ShellRoot {
             // near-invisible grey line reads as a broken graph, not as gated.
             onPaint: root.paintSeries(this, root.micHist, 100,
               !root.levelOn ? String(root.cMuted)
-                : root.micMuted ? String(root.cRed) : String(root.cGreen))
+                : root.micMuted ? String(root.cRed) : String(root.cGreen),
+              root.micPoints)
           }
 
           // "them" label above its own graph, then the verdict caption: the
@@ -535,7 +541,8 @@ ShellRoot {
             Layout.preferredHeight: 110
             onWidthChanged: requestPaint()
             onHeightChanged: requestPaint()
-            onPaint: root.paintSeries(this, root.sessHist, 1, String(root.cAccent))
+            onPaint: root.paintSeries(this, root.sessHist, 1,
+              String(root.cAccent), root.sessPoints)
           }
           Text {
             Layout.fillWidth: true
