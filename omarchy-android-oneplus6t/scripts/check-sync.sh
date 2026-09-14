@@ -86,7 +86,7 @@ while IFS=: read -r repo remote; do
   [ -z "$repo" ] && continue
   REMOTES="$REMOTES $remote"
 done <<< "$MAP"
-if ! ssh -o ConnectTimeout=8 "$PH" "cd ~ && tar -cf - $REMOTES 2>/dev/null" | tar -xf - -C "$tmp"; then
+if ! ssh -o ConnectTimeout=8 "$PH" "cd ~ && tar --ignore-failed-read -cf - $REMOTES 2>/dev/null" | tar -xf - -C "$tmp"; then
   echo "PHONE UNREACHABLE — nothing compared"; exit 1
 fi
 
