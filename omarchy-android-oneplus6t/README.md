@@ -487,11 +487,11 @@ Apps menu (`calls.desktop` / `messages.desktop`) or by the watcher on an event:
   calls going `unknown -> dialing -> ringing-out -> active -> terminated`
   (call0 active 07:17:12–07:17:19, call1 active 07:17:48–07:17:54) and an
   inbound `ringing-in` at 07:20:13, on `3 UK` / `access tech: lte` with the
-  81voltd IMS bearer connected since 01:34:54. What is still *unproven* is
-  audio during a connected call: q6voiced logged nothing in that window (its
+  81voltd IMS bearer connected since 01:34:54. Audio during a connected call
+  does not work: q6voiced logged nothing in that window (its
   journal file for the period is damaged — "Identifier removed"), and
   `pcm6{p,c}` were not sampled while a call was `active`. That live sample,
-  taken during a call rather than during `dialing`, is the remaining gap.
+  taken during a call rather than during `dialing`, is the remaining diagnostic gap.
 - **`ipc call … show || spawn` is not a launcher: a Quickshell process outlives
   the compositor.** After an overnight shell restart the `messages.qml`
   instance (pid 358400) was still running and still owned the

@@ -12,7 +12,7 @@ phone, and the patches that make a desktop shell work with a finger.
 
 | Folder | Device | Where it got to |
 |---|---|---|
-| [`omarchy-android-oneplus6t`](omarchy-android-oneplus6t) | OnePlus 6T (fajita), Snapdragon 845 | Boots on its own into Omarchy 4. Bar, menu, on-screen keyboard, terminal, GPU, audio, Wi-Fi, mobile data, SMS and a lock screen work; calls connect with audio unproven. Bluetooth doesn't. |
+| [`omarchy-android-oneplus6t`](omarchy-android-oneplus6t) | OnePlus 6T (fajita), Snapdragon 845 | Boots on its own into Omarchy 4. Bar, menu, on-screen keyboard, terminal, GPU, audio, Wi-Fi, mobile data, SMS and a lock screen work; calls connect but their audio doesn't. Bluetooth doesn't. |
 
 ## Omarchy on ARM
 

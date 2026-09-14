@@ -60,8 +60,8 @@ Three UK (test SIM) never built 2G and switched 3G off (fully by Nov 2025;
 UK 2G lingers on EE/Vodafone/O2 until at least 2029, all gone by 2033). LTE has
 no circuit-switched domain, so with `CS: detached` and `IMS voice support: yes`
 (`qmicli --nas-get-system-info`), SMS and calls must ride IMS. Status: SMS both
-directions work; calls connect through `active`; connected-call audio wired but
-unproven (no PCM sample mid-call yet; the watcher now logs every profile flip).
+directions work; calls connect through `active`; connected-call audio does not
+work (no PCM sample mid-call yet; the watcher now logs every profile flip).
 
 Moving parts: `81voltd.service` brings the IMS bearer up (verify-and-retry,
 see gotchas), `fajita-ims-wait` configures its interface, `fajita-call-watch`
