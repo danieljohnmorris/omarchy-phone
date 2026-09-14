@@ -615,7 +615,7 @@ One thing is broken rather than misconfigured:
 
 - **Calls connect but carry no audio; every host-side piece is now verified
   correct.** Sampled live during a clean 14 Sep 19:16 call (no host captures):
-  profile `Voice Call`, `_verb` applied, both q6voice mixers `on`
+  profile `Voice Call`, both q6voice routing csets `on`
   (`SLIMBUS_0_RX…VoiceMMode1`, `VoiceMMode1 Capture…SLIMBUS_0_TX`),
   earpiece/mic muxes set, both `pcm6` substreams open — yet the FEs sat
   `PREPARED` for the whole call (never `RUNNING`) and the kernel logged zero

@@ -73,7 +73,13 @@ sample() { # sets: line, n_calls, p_state p_dp, c_state c_dc
 }
 
 if [ "${1:-}" = --sample ]; then
-  :
+  # Wait for the call first: the loop below self-terminates after ~2.5s of
+  # no call + closed FE, so starting before the phone rings would exit
+  # before any data. Arm, then ring.
+  echo "== waiting for a call to appear =="
+  until [ "$(fajita-call list 2>/dev/null | grep -c '|')" -gt 0 ]; do
+    sleep "$TICK"
+  done
 else
   [ $# -ge 1 ] || { echo "usage: $0 NUMBER | --sample" >&2; exit 2; }
   echo "== starting call to $1 =="
@@ -94,7 +100,9 @@ while :; do
 done
 
 echo "== FE telemetry: ${best:-none} (FE_OPEN+ expected while a call runs) =="
-echo "== UCM verb actually applied (must read Voice Call during/after a call) =="
+echo "== end dump runs AFTER teardown (profile/verb read HiFi-era here; the"
+echo "   per-tick lines above are the during-call evidence) =="
+echo "== UCM verb (HiFi by now if the watcher flipped back) =="
 alsaucm -c 0 get _verb 2>/dev/null || alsaucm -c O6T get _verb 2>/dev/null || true
 echo "== the two q6voice routing csets (must be on:1) =="
 for c in 'SLIMBUS_0_RX Voice Mixer VoiceMMode1' 'VoiceMMode1 Capture Mixer SLIMBUS_0_TX'; do

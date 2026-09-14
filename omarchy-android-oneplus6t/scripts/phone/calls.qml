@@ -50,9 +50,13 @@ ShellRoot {
         var m = new RegExp("^\\s*" + key + "\\s*=\\s*\"([^\"]+)\"", "m").exec(text)
         return m ? m[1] : fallback
       }
+      // Light themes: `muted` is near-invisible on their pale background
+      // (rose-pine: #cecacd on #faf4ed), so secondary text switches to the
+      // theme's dim-but-dark foreground there. Dark themes keep `muted`.
+      var light = /^\s*mode\s*=\s*"light"/m.test(text)
       root.cBg = "#ff" + pick("dark_background", "#111c18").replace("#", "")
       root.cText = pick("bright_foreground", "#F7E8B2")
-      root.cMuted = pick("muted", "#53685B")
+      root.cMuted = pick(light ? "dark_foreground" : "muted", "#53685B")
       root.cAccent = pick("accent", "#509475")
       root.cRow = pick("lighter_background", "#23372B")
       root.cGreen = pick("green", "#549e6a")
@@ -216,13 +220,22 @@ ShellRoot {
 
   // Closing the window must not orphan a live call: nothing else owns hang-up
   // once the app is gone (the watcher only raises UI, it never hangs up).
-  // setsid detaches mmcli so it survives our exit. Covers the X button, the
-  // menu's Close app row and any Hyprland close dispatch.
+  // The hangup child must launch before the engine stops: run() only spawns
+  // the Process child when the event loop pumps, so a same-turn Qt.quit()
+  // can exit first and silently drop the hangup. closeAndHangup therefore
+  // defers the quit by one timer tick instead of quitting inline.
   function closeAndHangup() {
     if (root.calls.length > 0)
       root.run("setsid -f fajita-call hangup-all >/dev/null 2>&1")
     root.open = false
-    Qt.quit()
+    // One event-loop turn for the child to spawn, then quit (comment above).
+    quitTimer0.restart()
+  }
+
+  Timer {
+    id: quitTimer0
+    interval: 50
+    onTriggered: Qt.quit()
   }
 
   // A normal Hyprland window (xdg-toplevel), not a layer-shell overlay: it

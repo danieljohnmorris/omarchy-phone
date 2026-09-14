@@ -98,9 +98,13 @@ ShellRoot {
         var m = new RegExp("^\\s*" + key + "\\s*=\\s*\"([^\"]+)\"", "m").exec(text)
         return m ? m[1] : fallback
       }
+      // Light themes: `muted` is near-invisible on their pale background
+      // (rose-pine: #cecacd on #faf4ed), so secondary text switches to the
+      // theme's dim-but-dark foreground there. Dark themes keep `muted`.
+      var light = /^\s*mode\s*=\s*"light"/m.test(text)
       root.cBg = "#ff" + pick("dark_background", "#111c18").replace("#", "")
       root.cText = pick("bright_foreground", "#F7E8B2")
-      root.cMuted = pick("muted", "#53685B")
+      root.cMuted = pick(light ? "dark_foreground" : "muted", "#53685B")
       root.cAccent = pick("accent", "#509475")
       root.cRow = pick("lighter_background", "#23372B")
       root.cGreen = pick("green", "#549e6a")
@@ -184,13 +188,15 @@ ShellRoot {
 
   // Navigation. Every screen except the list has a back path, and back always
   // lands on the list -- there is no deeper stack to unwind.
-  function openThread(number) {
+  function openThread(number, focus) {
     // Canon here too: the IPC entry point (`fajita-app messages open 07…`,
     // used by the watcher and the dialer hand-off) may pass a raw dialled form.
     root.thread = root.canon(number)
     root.screen = "thread"
     bodyInput.clear()
-    focusInput(bodyInput) // land ready to type, keyboard up
+    // Focus is opt-in: the watcher opens a thread on every incoming SMS, and
+    // an arriving text must not pop the keyboard over whatever is on screen.
+    if (focus !== false) focusInput(bodyInput)
     root.lastError = ""
   }
 
@@ -199,6 +205,7 @@ ShellRoot {
     root.thread = ""
     toInput.clear()
     bodyInput.clear()
+    root.lastError = ""
     focusInput(toInput)
   }
 
@@ -304,9 +311,10 @@ ShellRoot {
     function show(): void { if (!root.open) root.toggle() }
     // Poked by the theme-set.d hook (see calls.qml for the inode story).
     function retint(): void { colors.reload() }
-    // The watcher raises a specific conversation on an incoming SMS.
+    // The watcher raises a specific conversation on an incoming SMS. No
+    // focus: see openThread — an arriving text must not raise the keyboard.
     function open(number: string): void {
-      root.openThread(number)
+      root.openThread(number, false)
       if (!root.open) root.toggle()
     }
   }
