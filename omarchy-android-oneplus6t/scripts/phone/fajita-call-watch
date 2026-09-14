@@ -57,6 +57,9 @@ pcm_state() { # $1 = pcm6p|pcm6c
 raise() { # $1 = calls|messages, then optional ipc args
   fajita-app "$@" >/dev/null 2>&1 || true
 }
+# The store must exist before calls.qml's first read (fresh phone): touch it
+# the same way fajita-sms does for messages.jsonl.
+mkdir -p "$(dirname "$CALLLOG")"; : >> "$CALLLOG"
 
 reconcile() {
   local calls want cur path state number
@@ -116,7 +119,7 @@ reconcile() {
     if [ "$ans" -gt 0 ]; then answered=true; dur=$((now - ans))
     else answered=false; dur=0; fi
     jq -cn --argjson ts "${c_t0[$p]}" \
-      --arg dir "$([ "${c_dir[$p]}" = incoming ] && echo in || echo out)" \
+      --arg dir "$(case "${c_dir[$p]}" in incoming) echo in;; outgoing) echo out;; *) echo "${c_dir[$p]:-out}";; esac)" \
       --arg number "${c_num[$p]:-unknown}" \
       --argjson answered "$answered" --argjson dur "$dur" \
       '{ts:$ts,dir:$dir,number:$number,answered:$answered,dur:$dur}' \

@@ -335,7 +335,7 @@ ShellRoot {
             Rectangle {
               required property string modelData
               Layout.fillWidth: true
-              height: 36
+              Layout.preferredHeight: 36
               radius: 8
               color: root.tab === modelData ? root.cRow : root.cBg
               border.width: 1
@@ -386,7 +386,7 @@ ShellRoot {
               Rectangle {
                 required property var modelData
                 Layout.fillWidth: true
-                height: 58
+                Layout.preferredHeight: 58
                 radius: 10
                 color: root.cRow
 

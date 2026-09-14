@@ -6,7 +6,10 @@
 #
 # Versions: qrtr/rmtfs are pinned to the exact commits validated on the phone
 # (2026-09-12; the live image runs qrtr r126.ae88108 / rmtfs r78.14cb1ee);
-# pd-mapper/tqftpserv track linux-msm heads like before.
+# pd-mapper/tqftpserv track linux-msm heads like before. alsa-ucm-conf is
+# pinned to 1b8d290 (2026-05-09), the tree the deployed md5s in
+# fajita-call-audio-diag were computed from: unpinned, any upstream change
+# would make this check false-alarm after a rebuild.
 # Run in the build container with /work/out/rootfs.img mounted at /mnt/rootfs.
 set -euo pipefail
 MNT=/mnt/rootfs
@@ -45,7 +48,8 @@ UNIT
 systemctl enable rmtfs pd-mapper tqftpserv >/dev/null 2>&1
 # ALSA UCM profiles for the OnePlus 6T sound card ("O6T"): upstream alsa-ucm-conf
 # only ships DB845c/Lenovo for sdm845, so PipeWire sees a dummy sink without these.
-git clone -q --depth 1 https://gitlab.com/sdm845-mainline/alsa-ucm-conf.git
+git clone -q https://gitlab.com/sdm845-mainline/alsa-ucm-conf.git
+( cd alsa-ucm-conf && git checkout -q 1b8d290 )
 cp -a alsa-ucm-conf/ucm2/. /usr/share/alsa/ucm2/
 rm -rf /root/q
 ls -la /usr/bin/qrtr-ns /usr/bin/rmtfs /usr/bin/pd-mapper /usr/bin/tqftpserv

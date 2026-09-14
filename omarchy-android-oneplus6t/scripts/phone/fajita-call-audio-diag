@@ -10,7 +10,7 @@
 # EnableSequence), inp0=RX0 and adcmux7=AMIC amicmux7=ADC4 (the Earpiece/Mic
 # SectionDevices). ZERO/blank there = verb applied but devices never enabled.
 #
- # PCM state/pointers are telemetry only: q6voiced opens+prepares but never
+# PCM state/pointers are telemetry only: q6voiced opens+prepares but never
 # writes (hostless link), so static pointers do not prove failure. FE_OPEN
 # during a call proves q6voiced did its part. Audible audio is the final
 # verdict (voicemail greeting = downlink-only test).
@@ -18,8 +18,8 @@
 # Also watched:
 #   pactl card profile      watcher's HiFi <-> Voice Call flip; flapping means
 #                           WirePlumber is fighting it.
-#   VoiceMMode1 mixer       the ADSP voice session; VoLTE is WB-AMR so a
-#                           media-format rate of 8000 (NB) is suspect.
+#   VoiceMMode1 mixer      the ADSP voice session; dumped in full at the end
+#                           (vrx/vtx per-tick above are its routing controls).
 #   journals at the end     q6voiced open/prepare errors, MM call transitions.
 set -uo pipefail
 CARD="alsa_card.platform-sound"
@@ -29,7 +29,7 @@ TICK=0.5
 pcm_val() { # $1 = pcm6p|pcm6c, $2 = state|hw_ptr
   awk -v f="$2" '{ t=$1; gsub(/:/, "", t); if (t == f) { print $NF; exit } }' \
     /proc/asound/$FE/$1/sub0/status 2>/dev/null
-
+}
 cval() { # $1 = mixer control name -> its value (blank if absent)
   amixer -c0 cget "name='$1'" 2>/dev/null | sed -n 's/.*: values=\(.*\)/\1/p' | head -1
 }
