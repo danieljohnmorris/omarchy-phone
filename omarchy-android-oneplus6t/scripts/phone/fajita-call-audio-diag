@@ -1,0 +1,97 @@
+#!/bin/bash
+# Live call-audio diagnosis: start a call and sample everything the voice path
+# touches while it runs. Usage:
+#   fajita-call-audio-diag NUMBER        # outbound call, sampled till it ends
+#   fajita-call-audio-diag --sample      # just sample whatever call is running
+#
+# PCM state/pointers are telemetry only: q6voiced opens+prepares but never
+# writes (hostless link), so static pointers do not prove failure. FE_OPEN
+# during a call proves q6voiced did its part. The decisive checks are in the
+# end dump: `_verb` must be `Voice Call`, the two Voice csets must be 1, and
+# there must be audible audio (voicemail greeting = downlink-only test).
+#
+# Also watched:
+#   pactl card profile      watcher's HiFi <-> Voice Call flip; flapping means
+#                           WirePlumber is fighting it.
+#   VoiceMMode1 mixer       the ADSP voice session; VoLTE is WB-AMR so a
+#                           media-format rate of 8000 (NB) is suspect.
+#   journals at the end     q6voiced open/prepare errors, MM call transitions.
+set -uo pipefail
+CARD="alsa_card.platform-sound"
+FE=card0
+TICK=0.5
+
+pcm_val() { # $1 = pcm6p|pcm6c, $2 = state|hw_ptr
+  awk -v f="$2" '{ t=$1; gsub(/:/, "", t); if (t == f) { print $NF; exit } }' \
+    /proc/asound/$FE/$1/sub0/status 2>/dev/null
+}
+
+# shellcheck disable=SC2034
+sample() { # sets: line, n_calls, p_state p_dp, c_state c_dc
+  n_calls=$(fajita-call list 2>/dev/null | grep -c '|' || true)
+  local p_hw c_hw
+  p_state=$(pcm_val pcm6p state); p_state=${p_state:-CLOSED}
+  c_state=$(pcm_val pcm6c state); c_state=${c_state:-CLOSED}
+  p_hw=$(pcm_val pcm6p hw_ptr); p_hw=${p_hw:-0}
+  c_hw=$(pcm_val pcm6c hw_ptr); c_hw=${c_hw:-0}
+  p_dp=$((p_hw - ${p_hw_prev:-$p_hw})); p_hw_prev=$p_hw
+  c_dc=$((c_hw - ${c_hw_prev:-$c_hw})); c_hw_prev=$c_hw
+
+  local prof rate verdict
+  prof=$(pactl list cards 2>/dev/null | awk -v c="$CARD" '
+    $1 == "Name:" { n = $2 }
+    /Active Profile:/ && n == c { $1 = $2 = ""; gsub(/^[ :]+|[ :]+$/, ""); print; exit }')
+  rate=$(amixer -c 0 cget name='VoiceMMode1 FEC.rx_media_format.rate' 2>/dev/null |
+    sed -n 's/.*: values=\(.*\)/\1/p' | head -1)
+  [ -z "${rate:-}" ] && rate=none
+
+  # Telemetry labels only (see header).
+  if [ "$n_calls" -eq 0 ]; then verdict=-
+  elif [ "$p_state" = RUNNING ] && [ "$c_state" = RUNNING ]; then
+    if [ "$p_dp" -gt 0 ] && [ "$c_dc" -gt 0 ]; then verdict=FE_MOVING; else verdict=FE_OPEN; fi
+  elif [ "$p_state" = CLOSED ] && [ "$c_state" = CLOSED ]; then verdict=FE_DOWN
+  else verdict=FE_PARTIAL
+  fi
+
+  line="$(date +%H:%M:%S) calls=$n_calls pcm6p=${p_state}/+${p_dp} pcm6c=${c_state}/+${c_dc} profile=${prof:-?} rate=${rate} $verdict"
+}
+
+if [ "${1:-}" = --sample ]; then
+  :
+else
+  [ $# -ge 1 ] || { echo "usage: $0 NUMBER | --sample" >&2; exit 2; }
+  echo "== starting call to $1 =="
+  fajita-call dial "$1" || true
+fi
+
+echo "== sampling every ${TICK}s (stops when the call ends and the FE closes) =="
+best=-
+while :; do
+  sample; echo "$line"
+  case "$verdict" in FE_MOVING|FE_OPEN) best=$verdict;; esac
+  # Auto-stop: call gone and both FE sides closed for two consecutive ticks.
+  if [ "$n_calls" -eq 0 ] && [ "$p_state" = CLOSED ] && [ "$c_state" = CLOSED ]; then
+    sleep 2; sample; echo "$line"
+    [ "$n_calls" -eq 0 ] && [ "$p_state" = CLOSED ] && break
+  fi
+  sleep $TICK
+done
+
+echo "== FE telemetry: ${best:-none} (FE_OPEN+ expected while a call runs) =="
+echo "== UCM verb actually applied (must read Voice Call during/after a call) =="
+alsaucm -c 0 get _verb 2>/dev/null || alsaucm -c O6T get _verb 2>/dev/null || true
+echo "== the two q6voice routing csets (must be on:1) =="
+for c in 'SLIMBUS_0_RX Voice Mixer VoiceMMode1' 'VoiceMMode1 Capture Mixer SLIMBUS_0_TX'; do
+  amixer -c0 cget "name='$c'" 2>/dev/null | grep -E "numid|: values" | tr '\n' ' '; echo
+done
+echo "== deployed VoiceCall.conf md5 (repo tree: compare on host) =="
+md5sum /usr/share/alsa/ucm2/OnePlus/fajita/VoiceCall.conf 2>/dev/null || true
+echo "== q6voiced journal (last 30) =="
+journalctl -u q6voiced --no-pager -n 30 2>/dev/null || true
+echo "== ModemManager voice journal (last 20) =="
+journalctl -u ModemManager --no-pager -n 200 2>/dev/null |
+  grep -iE 'call|voice' | tail -20 || true
+echo "== full VoiceMMode1 mixer state =="
+amixer -c0 controls 2>/dev/null | grep -i voicemmode | while read -r c; do
+  amixer -c0 cget "$c" 2>/dev/null | grep -E ":|values" | tr '\n' ' '; echo
+done || true

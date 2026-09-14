@@ -619,6 +619,15 @@ One thing is still untested rather than broken:
   sample of the PCM state exists for a call while `active`; the watcher now logs
   it on every profile flip, so the next call settles it. 81voltd provides the
   IMS *data* bearer only, not SIP signalling or media.
+  The shipped `sdm845-mainline/alsa-ucm-conf` fajita profile *does* carry a
+  full `Voice Call` verb (`ucm2/OnePlus/fajita/VoiceCall.conf`): it wires the
+  q6voice FE both ways (`SLIMBUS_0_RX Voice Mixer VoiceMMode1`,
+  `VoiceMMode1 Capture Mixer SLIMBUS_0_TX`) plus earpiece (RX0/AIF1_PB) and
+  bottom-mic (TX7/DEC7/AMIC4) routing, and the watcher's profile flip is what
+  applies it. So every component needed for call audio exists on the box;
+  `fajita-call-audio-diag NUMBER` (dial, sample, dump `_verb`/csets/journal)
+  is the one remaining test. Rate is not a suspect: q6voiced opens+prepares
+  but never writes (hostless), so its 8 kHz pcm_config is decorative.
 
 **81voltd needs verify-and-retry, not a precondition.** The modem asks for its
 IMS PDN exactly once, when the service appears on QRTR, and 81voltd makes one
