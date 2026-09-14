@@ -28,10 +28,25 @@ ShellRoot {
   property string lastError: ""
   property bool sending: false     // a submit is in flight (can take ~25s)
 
+  // Same canonicalisation as fajita-sms' canon(): the helper files every
+  // message under E.164, so a composer addressed "07700900123" must resolve to
+  // "+447700900123" or the sent message lands in a thread this screen is not
+  // filtering for and appears to vanish.
+  function canon(s) {
+    if (/[^0-9+ ()-]/.test(s)) return s          // alphanumeric sender: verbatim
+    const n = s.replace(/[ ()-]/g, "")
+    if (n.charAt(0) === "+") return n
+    if (n.slice(0, 2) === "00") return "+" + n.slice(2)
+    if (/^0[1-9]/.test(n)) return "+" + root.cc + n.slice(1)
+    if (/^[0-9]/.test(n)) return n.length >= 9 ? "+" + n : n   // short code
+    return n
+  }
+  readonly property string cc: "44"
+
   // The number the composer sends to: the open conversation, or whatever the
   // new-message screen has been addressed to.
   readonly property string target: root.screen === "new"
-    ? root.toField.replace(/[ ()-]/g, "")
+    ? root.canon(root.toField)
     : root.thread
 
   // Pre-load fallbacks only; every colour below is replaced from the active
@@ -118,7 +133,9 @@ ShellRoot {
   // Navigation. Every screen except the list has a back path, and back always
   // lands on the list -- there is no deeper stack to unwind.
   function openThread(number) {
-    root.thread = number
+    // Canon here too: the IPC entry point (`fajita-app messages open 07…`,
+    // used by the watcher and the dialer hand-off) may pass a raw dialled form.
+    root.thread = root.canon(number)
     root.screen = "thread"
     bodyInput.clear()
     root.lastError = ""

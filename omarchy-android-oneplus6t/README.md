@@ -457,6 +457,14 @@ power-key menu ("Calls", "Messages") or by the watcher on an event:
 - `messages.qml` — thread list, conversation, new message. Talks to
   `fajita-sms`; history is `~/.local/state/fajita/messages.jsonl` (one JSON
   object per line, the helper is the only writer).
+  Threads are keyed by the E.164 number: `fajita-sms`' `canon()` rewrites
+  dialled forms (`07700900123`, `0044 7700 900123`) to `+447700900123` on every
+  write, and `messages.qml` mirrors the same function so a composer addressed
+  in national form opens (and keeps) the canonical thread. Without it sent and
+  received messages land in two threads, the open one holds only their side,
+  and nothing is right-aligned — which reads as "it doesn't say who sent what".
+  Alphanumeric senders (`Missed Call`, `3UK`) and short codes pass through
+  verbatim. `fajita-sms normalize` rewrites an already-split store in place.
 - Both are plain xdg-toplevel windows, not layer-shell overlays, so they tile
   like any other app (two open = 50/50) and text fields raise squeekboard.
   An in-app key grid would double up with the OSK; don't add one back.
