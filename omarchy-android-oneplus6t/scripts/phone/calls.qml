@@ -63,6 +63,7 @@ ShellRoot {
   function toggle() {
     root.open = !root.open
     if (root.open) {
+      colors.reload() // stale palette if a theme switched while we ran hidden
       rescan.running = true // restarting a running Process re-runs it
       logLoad.running = true
       quitTimer.stop()
@@ -111,6 +112,10 @@ ShellRoot {
 
     function toggle(): void { root.toggle() }
     function show(): void { if (!root.open) root.toggle() }
+    // theme-set.d hook pokes this on a theme switch: the FileView watches the
+    // resolved colors.toml inode, which theme-set replaces, so a live window
+    // repaints via IPC rather than waiting for the file watcher that never fires.
+    function retint(): void { colors.reload() }
   }
 
   // Common runner for actions (start/accept/hangup).
@@ -118,10 +123,28 @@ ShellRoot {
     id: proc
     running: false
     command: ["true"]
+
     stderr: SplitParser {
       onRead: data => { if (data.trim()) root.lastError = data.trim() }
     }
     onExited: rescan.running = true // reflect the new call state immediately
+  }
+
+  // Long-press dial paste: pull a dialable string off the clipboard. The
+  // pipeline keeps only the first run of phone characters; non-dialable
+  // clipboards produce nothing and the dial is untouched.
+  Process {
+    id: clipProc
+    running: false
+    command: ["bash", "-lc",
+      "wl-paste --no-newline 2>/dev/null | grep -oE '[+0-9][0-9 ()-]*' | head -1"]
+    stdout: SplitParser {
+      onRead: line => {
+        var s = line.trim()
+        if ((s.replace(/[^0-9]/g, "").length >= 3) && root.dial.indexOf(s) < 0)
+          root.dial += s
+      }
+    }
   }
 
   // fajita-call list poll. Lines accumulate into `out`; the swap happens in
@@ -191,6 +214,17 @@ ShellRoot {
   }
   onOpenChanged: if (!root.open) quitTimer.restart()
 
+  // Closing the window must not orphan a live call: nothing else owns hang-up
+  // once the app is gone (the watcher only raises UI, it never hangs up).
+  // setsid detaches mmcli so it survives our exit. Covers the X button, the
+  // menu's Close app row and any Hyprland close dispatch.
+  function closeAndHangup() {
+    if (root.calls.length > 0)
+      root.run("setsid -f fajita-call hangup-all >/dev/null 2>&1")
+    root.open = false
+    Qt.quit()
+  }
+
   // A normal Hyprland window (xdg-toplevel), not a layer-shell overlay: it
   // tiles like any other app, so calls and messages sit side by side 50/50
   // and the bar keeps its reserved space.
@@ -201,6 +235,15 @@ ShellRoot {
     visible: root.open
     implicitWidth: 540
     implicitHeight: 1080
+    // Any close path that hides the window (compositor close, menu Close
+    // app) must not orphan a live call either — the ✕ button cannot be the
+    // only one that hangs up. Idempotent with closeAndHangup. Clearing open
+    // lets the quit timer reap the process instead of leaving a hidden one.
+    onVisibleChanged: if (!visible) {
+      if (root.calls.length > 0)
+        root.run("setsid -f fajita-call hangup-all >/dev/null 2>&1")
+      root.open = false
+    }
 
     Rectangle {
       id: card
@@ -233,8 +276,9 @@ ShellRoot {
             MouseArea {
               anchors.fill: parent
               anchors.margins: -14
-              // A window, not an overlay: closing it closes the app.
-              onClicked: Qt.quit()
+              // A window, not an overlay: closing it closes the app — and
+              // hangs up first if a call is live (see closeAndHangup).
+              onClicked: root.closeAndHangup()
             }
           }
         }
@@ -443,15 +487,27 @@ ShellRoot {
           Layout.fillHeight: true
           spacing: 8
 
-          Text {
-            text: root.dial || "number"
-            color: root.dial ? root.cText : root.cMuted
-            font.family: "JetBrainsMono Nerd Font"
-            font.pixelSize: 30
-            elide: Text.ElideLeft
-            horizontalAlignment: Text.AlignHCenter
+          Item {
             Layout.fillWidth: true
             Layout.bottomMargin: 4
+            implicitHeight: dialText.implicitHeight
+
+            Text {
+              id: dialText
+              anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter }
+              text: root.dial || "number"
+              color: root.dial ? root.cText : root.cMuted
+              font.family: "JetBrainsMono Nerd Font"
+              font.pixelSize: 30
+              elide: Text.ElideLeft
+              horizontalAlignment: Text.AlignHCenter
+            }
+            MouseArea {
+              anchors.fill: parent
+              // Long-press pastes a dialable clipboard string into the dial
+              // (filtered; anything else is a no-op).
+              onPressAndHold: clipProc.running = true
+            }
           }
 
           // Keypad: the five rows share whatever height the tile gives us, so

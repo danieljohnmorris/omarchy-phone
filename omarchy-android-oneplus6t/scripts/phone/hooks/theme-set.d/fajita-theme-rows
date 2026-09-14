@@ -10,8 +10,16 @@
 #     symlink, which the watcher never sees.
 #   - squeekboard: GTK theme FajitaOsk is generated from colors.toml by
 #     fajita-osk-theme; regenerate it and restart to re-read.
+#   - calls.qml / messages.qml: same stale-inode problem as empty-hint, but
+#     on-demand windows rather than services. They expose an ipc `retint`
+#     that reloads the palette; a hidden instance reloading is harmless.
 set -u
 
 $HOME/.local/bin/fajita-osk-theme || true
+for t in fajita-calls fajita-messages; do
+  quickshell -p "$HOME/.config/fajita/${t#fajita-}.qml" ipc call "$t" retint >/dev/null 2>&1 || true
+done
+# waybar has StartLimitIntervalSec=300/Burst=3: repeated restarts leave the
+# clock row silently dead, so clear failed-state first.
 systemctl --user reset-failed waybar.service empty-hint.service squeekboard.service 2>/dev/null || true
 systemctl --user restart waybar.service empty-hint.service squeekboard.service

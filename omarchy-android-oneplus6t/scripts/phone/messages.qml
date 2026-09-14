@@ -27,6 +27,7 @@ ShellRoot {
   property string toField: ""
   property string lastError: ""
   property bool sending: false     // a submit is in flight (can take ~25s)
+  property string pendingNumber: "" // tel: target the action sheet is about
 
   // Same canonicalisation as fajita-sms' canon(): the helper files every
   // message under E.164, so a composer addressed "07700900123" must resolve to
@@ -40,6 +41,31 @@ ShellRoot {
     if (/^0[1-9]/.test(n)) return "+" + root.cc + n.slice(1)
     if (/^[0-9]/.test(n)) return n.length >= 9 ? "+" + n : n   // short code
     return n
+  }
+  // "#aarrggbb" -> "#rrggbb" for rich-text <font color=...> (Qt rich text
+  // rejects the 8-digit form).
+  function hex(c) {
+    var s = c.toString()
+    return "#" + s.substr(s.length - 6, 6)
+  }
+
+  // Phone numbers in bubble text become tel: links. A run of digits joined
+  // by (). - separators links whole when its digit count is a plausible
+  // E.164 (9-15); longer runs are a number glued to a date/count by spaces
+  // ("447700900123 (1) 2026-09-13 23") and only their contiguous digit
+  // strings of phone length link, so the date stays plain text.
+  function linkify(s, isOut) {
+    var esc = s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    var lc = hex(isOut ? root.cBg : root.cAccent)
+    return esc.replace(/\+?[0-9][0-9 ().-]*[0-9]/g, function (run) {
+      var digits = run.replace(/[^0-9]/g, "")
+      if (digits.length >= 9 && digits.length <= 15)
+        return '<u><a href="tel:' + run.replace(/[^0-9+]/g, "") + '">' +
+          '<font color="' + lc + '">' + run + '</font></a></u>'
+      return run.replace(/\+?[0-9]{9,15}/g, function (n) {
+        return '<u><a href="tel:' + n + '"><font color="' + lc + '">' + n + '</font></a></u>'
+      })
+    })
   }
   readonly property string cc: "44"
 
@@ -104,6 +130,7 @@ ShellRoot {
   function toggle() {
     root.open = !root.open
     if (root.open) {
+      colors.reload() // stale palette if a theme switched while we ran hidden
       store.reload()
       quitTimer.stop()
     } else {
@@ -130,6 +157,31 @@ ShellRoot {
     proc.running = true
   }
 
+  // Focus a text input AND raise the OSK. Text-input activation alone does
+  // not flip squeekboard's Visible once its relay has gone stale (layout
+  // reloads on tap, panel never maps), so set it over the bus explicitly.
+  function focusInput(item) {
+    item.forceActiveFocus()
+    root.run("fajita-osk-show")
+  }
+
+  // Long-press paste: probe the clipboard, and if it holds anything offer a
+  // chip above the composer. Insertion happens at the held field's cursor.
+  property var pasteTarget: null
+  property string clipText: ""
+  function probePaste(field) {
+    root.pasteTarget = field
+    root.clipLines = []
+    clipProc.running = true
+  }
+  property var clipLines: []
+  function doPaste() {
+    if (root.pasteTarget && root.clipText)
+      root.pasteTarget.insert(root.pasteTarget.cursorPosition, root.clipText)
+    root.clipText = ""
+    root.pasteTarget = null
+  }
+
   // Navigation. Every screen except the list has a back path, and back always
   // lands on the list -- there is no deeper stack to unwind.
   function openThread(number) {
@@ -138,6 +190,7 @@ ShellRoot {
     root.thread = root.canon(number)
     root.screen = "thread"
     bodyInput.clear()
+    focusInput(bodyInput) // land ready to type, keyboard up
     root.lastError = ""
   }
 
@@ -146,8 +199,9 @@ ShellRoot {
     root.thread = ""
     toInput.clear()
     bodyInput.clear()
-    root.lastError = ""
+    focusInput(toInput)
   }
+
 
   function back() {
     root.screen = "list"
@@ -228,11 +282,28 @@ ShellRoot {
     }
   }
 
+  // wl-paste for the long-press chip. Lines accumulate and join on exit; an
+  // empty clipboard yields an empty string and the chip simply never shows.
+  Process {
+    id: clipProc
+    running: false
+    command: ["bash", "-lc", "wl-paste --no-newline 2>/dev/null; true"]
+    stdout: SplitParser {
+      onRead: data => { root.clipLines.push(data) }
+    }
+    onExited: {
+      root.clipText = root.clipLines.join("\n")
+      if (root.clipText.trim() === "") root.clipText = ""
+    }
+  }
+
   IpcHandler {
     target: "fajita-messages"
 
     function toggle(): void { root.toggle() }
     function show(): void { if (!root.open) root.toggle() }
+    // Poked by the theme-set.d hook (see calls.qml for the inode story).
+    function retint(): void { colors.reload() }
     // The watcher raises a specific conversation on an incoming SMS.
     function open(number: string): void {
       root.openThread(number)
@@ -481,15 +552,27 @@ ShellRoot {
                 implicitHeight: bubble.implicitHeight + stampText.implicitHeight + 18
                 radius: 8
                 color: msgRow.modelData.dir === "out" ? root.cAccent : root.cRow
-
                 Text {
                   id: bubble
                   anchors { left: parent.left; right: parent.right; top: parent.top; margins: 10 }
-                  text: msgRow.modelData.text
+                  textFormat: Text.RichText
+                  text: root.linkify(msgRow.modelData.text, msgRow.modelData.dir === "out")
                   color: msgRow.modelData.dir === "out" ? root.cBg : root.cText
                   font.family: "JetBrainsMono Nerd Font"
                   font.pixelSize: 14
                   wrapMode: Text.Wrap
+
+                  MouseArea {
+                    anchors.fill: parent
+                    // Tap a tel: link -> action sheet (call / message / copy).
+                    // Taps on plain text fall through to nothing; drags still
+                    // scroll the Flickable.
+                    onClicked: {
+                      var l = bubble.linkAt(mouse.x, mouse.y)
+                      if (String(l).indexOf("tel:") === 0)
+                        root.pendingNumber = l.substring(4)
+                    }
+                  }
                 }
 
                 Text {
@@ -542,8 +625,7 @@ ShellRoot {
             font.pixelSize: 14
             inputMethodHints: Qt.ImhDialableCharactersOnly
             clip: true
-            onAccepted: bodyInput.forceActiveFocus()
-
+            onAccepted: focusInput(bodyInput)
             Text {
               anchors.fill: parent
               visible: toInput.text === ""
@@ -555,7 +637,50 @@ ShellRoot {
           }
           MouseArea {
             anchors.fill: parent
-            onClicked: toInput.forceActiveFocus()
+            onClicked: focusInput(toInput)
+            // Long-press offers the clipboard (chip above the composer).
+            onPressAndHold: probePaste(toInput)
+          }
+        }
+
+        // Clipboard chip: long-pressing either field sets it; tap inserts at
+        // the held field's cursor, ✕ dismisses.
+        Rectangle {
+          visible: root.clipText !== "" && root.screen !== "list"
+          Layout.fillWidth: true
+          Layout.preferredHeight: 40
+          radius: 8
+          color: root.cAccent
+
+          RowLayout {
+            anchors.fill: parent
+            anchors.margins: 8
+            spacing: 8
+
+            Text {
+              Layout.fillWidth: true
+              text: "paste  " + root.clipText.replace(/\s+/g, " ").slice(0, 48)
+              color: root.cBg
+              elide: Text.ElideRight
+              font.family: "JetBrainsMono Nerd Font"
+              font.pixelSize: 13
+            }
+            Text {
+              text: "✕"
+              color: root.cBg
+              font.pixelSize: 15
+              MouseArea {
+                anchors.fill: parent
+                anchors.margins: -10
+                onClicked: { root.clipText = ""; root.pasteTarget = null }
+              }
+            }
+          }
+          MouseArea {
+            anchors.fill: parent
+            // The ✕ has its own area; only bare chip taps paste.
+            z: -1
+            onClicked: root.doPaste()
           }
         }
 
@@ -595,7 +720,8 @@ ShellRoot {
             }
             MouseArea {
               anchors.fill: parent
-              onClicked: bodyInput.forceActiveFocus()
+              onClicked: focusInput(bodyInput)
+              onPressAndHold: probePaste(bodyInput)
             }
           }
 
@@ -619,6 +745,98 @@ ShellRoot {
             MouseArea {
               anchors.fill: parent
               onClicked: root.send()
+            }
+          }
+        }
+      }
+
+      // Phone-number action sheet: tapping a tel: link in a bubble sets
+      // pendingNumber; the sheet offers the three useful actions. Tap the
+      // scrim to dismiss.
+      Rectangle {
+        anchors.fill: parent
+        visible: root.pendingNumber !== ""
+        z: 5
+        color: "#99000000" // theme-agnostic: dim whatever is behind
+
+        MouseArea {
+          anchors.fill: parent
+          onClicked: root.pendingNumber = ""
+        }
+
+        Rectangle {
+          anchors.centerIn: parent
+          width: 340
+          height: sheetCol.implicitHeight + 20
+          radius: 12
+          color: root.cBg
+          border.width: 1
+          border.color: root.cRow
+
+          ColumnLayout {
+            id: sheetCol
+            anchors { top: parent.top; left: parent.left; right: parent.right; margins: 10 }
+            spacing: 8
+
+            Text {
+              Layout.fillWidth: true
+              Layout.topMargin: 4
+              text: root.pendingNumber
+              color: root.cMuted
+              horizontalAlignment: Text.AlignHCenter
+              font.family: "JetBrainsMono Nerd Font"
+              font.pixelSize: 12
+            }
+            Repeater {
+              model: [
+                { verb: "call",    hint: "start a call to this number" },
+                { verb: "message", hint: "send a message to this number" },
+                { verb: "copy",    hint: "copy the number" }
+              ]
+
+              Rectangle {
+                id: sheetBtn
+                required property var modelData
+                Layout.fillWidth: true
+                Layout.preferredHeight: 48
+                radius: 8
+                color: root.cRow
+
+                RowLayout {
+                  anchors.fill: parent
+                  anchors.margins: 12
+                  spacing: 10
+
+                  Text {
+                    text: sheetBtn.modelData.verb
+                    color: root.cAccent
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: 14
+                  }
+                  Text {
+                    Layout.fillWidth: true
+                    text: sheetBtn.modelData.hint
+                    color: root.cText
+                    opacity: 0.8
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: 12
+                    elide: Text.ElideRight
+                  }
+                }
+                MouseArea {
+                  anchors.fill: parent
+                  onClicked: {
+                    var n = root.pendingNumber
+                    root.pendingNumber = ""
+                    if (sheetBtn.modelData.verb === "call")
+                      root.run("fajita-call start " + root.sq(n) + "; fajita-app calls")
+                    else if (sheetBtn.modelData.verb === "message")
+                      root.openThread(n)
+                    else
+                      root.run("wl-copy " + root.sq(n))
+                  }
+                }
+              }
             }
           }
         }

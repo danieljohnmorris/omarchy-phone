@@ -1,0 +1,11 @@
+#!/bin/bash
+# Raise squeekboard unconditionally over the session bus.
+#
+# Why not rely on text-input activation: after a mid-session squeekboard
+# restart (theme hook, crash-restart) the relay still delivers text-input
+# events — squeekboard reloads its layout on tap — but the panel's Visible
+# property never flips, so a focused field shows no keyboard. SetVisible
+# works regardless of that state; it is what fajita-osk-toggle drives and
+# what recovered the keyboard when this was diagnosed (18:55, 14 Sep).
+busctl --user call sm.puri.OSK0 /sm.puri/OSK0 sm.puri.OSK0 SetVisible b true \
+  >/dev/null 2>&1 || true
