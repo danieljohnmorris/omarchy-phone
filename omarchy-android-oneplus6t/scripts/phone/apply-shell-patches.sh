@@ -487,16 +487,20 @@ PY14
 C=/usr/share/omarchy/shell/plugins/notifications/components/NotificationCard.qml
 sudo cp -n "$C" "$C.orig" 2>/dev/null || true
 sudo python3 - "$C" <<'PY15'
-import sys
+import re, sys
 p=sys.argv[1]; s=open(p).read()
-old="  implicitWidth: Style.space(380)"
-new="""  // Phone port: clamp to the screen so the card cannot overflow the panel
-  // (upstream's 380 assumes a desktop monitor). Popup margins are gapsOut.
-  implicitWidth: Math.min(Style.space(380), Screen.width - Style.gapsOut * 2)"""
 if "Screen.width - Style.gapsOut * 2" in s:
     print("already patched notification card"); sys.exit(0)
-assert old in s, "notification card width anchor not found; upstream NotificationCard.qml changed"
-open(p,"w").write(s.replace(old,new,1)); print("patched notification card")
+# Indentation-agnostic: the anchor was observed over ssh grep only, and a
+# missed exact match would abort the whole patcher run half-applied.
+m = re.search(r'^([ \t]*)implicitWidth: Style\.space\(380\)[ \t]*$', s, re.M)
+assert m, "notification card width anchor not found; upstream NotificationCard.qml changed"
+i = m.group(1)
+new = (f"{i}// Phone port: clamp to the screen so the card cannot overflow the panel\n"
+       f"{i}// (upstream's 380 assumes a desktop monitor). Popup margins are gapsOut.\n"
+       f"{i}implicitWidth: Math.min(Style.space(380), Screen.width - Style.gapsOut * 2)")
+s = s[:m.start()] + new + s[m.end():]
+open(p,"w").write(s); print("patched notification card")
 PY15
 omarchy-restart-shell >/dev/null 2>&1 || true
 # the shell remaps its bar; restart the clock row so it lands beneath it again
