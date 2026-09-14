@@ -238,7 +238,11 @@ ShellRoot {
   Process {
     id: rescan
     running: false
-    command: ["bash", "-lc",
+    // Plain -c, not -lc: this runs every second, and a login shell sources
+    // .bash_profile/.bashrc on each tick for nothing but PATH. Set PATH here
+    // instead (bash expands $HOME) and skip the profile work.
+    command: ["bash", "-c",
+      "export PATH=\"$HOME/.local/bin:$PATH\"; " +
       "fajita-call list; echo __ACTIVE__; cat ~/.local/state/fajita/call-active 2>/dev/null; " +
       "echo __FE__; { grep -m1 '^state' /proc/asound/card0/pcm6p/sub0/status 2>/dev/null " +
       "|| echo 'state: closed'; }"]
@@ -303,19 +307,28 @@ ShellRoot {
 
   // Recents: the watcher appends one JSON object per ended call to
   // ~/.local/state/fajita/calls.jsonl; this reads the tail.
+  //
+  // The rows accumulate into `acc` and are swapped into root.log ONCE on
+  // exit. Assigning root.log per line (the old shape) re-evaluated the
+  // recents Repeater's model on every row, so an N-line log cost O(N^2)
+  // delegate constructions: at 194 entries that blocked the main thread for
+  // seconds at startup and after every call ended, which the compositor
+  // reports as "org.quickshell is not responding".
   Process {
     id: logLoad
     running: false
-    command: ["bash", "-lc", "tail -n 200 ~/.local/state/fajita/calls.jsonl 2>/dev/null"]
-    onRunningChanged: if (running) root.log = []
+    command: ["bash", "-c", "tail -n 50 ~/.local/state/fajita/calls.jsonl 2>/dev/null"]
+    property var acc: []
+    onRunningChanged: if (running) logLoad.acc = []
     stdout: SplitParser {
       onRead: data => {
         try {
           var o = JSON.parse(data)
-          if (o && o.ts) root.log = root.log.concat(o)
+          if (o && o.ts) logLoad.acc.push(o)
         } catch (e) { /* partial or non-JSON line: skip */ }
       }
     }
+    onExited: root.log = logLoad.acc
   }
 
   // Poll while open: far-end answers/hangups arrive as state changes we do
