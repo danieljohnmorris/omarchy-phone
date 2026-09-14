@@ -744,10 +744,9 @@ and Messages apps are installed and tile 50/50 like any other window; verified
 on device: dialing creates and starts a call object, hangup clears it in both
 the live and never-connected cases, the store drives the conversation UI, and
 flipping to the UCM "Voice Call" profile exposes the earpiece sink and call
-mic. The call-audio path itself is verified as far as the network allows: on a
+mic. The call-audio path itself checks out as far as the network allows: on a
 dial, q6voiced opens both VoiceMMode1 substreams (`PREPARED`, owned by its
 MainPID) and closes them on hangup. **SMS works in both directions**, on real
-traffic: `81voltd` brings up the IMS PDN and `fajita-ims-wait` configures its
 netdev, after which the operator delivered every message it had queued
 (`Modem.Messaging.Added` -> `fajita-sms ingest` -> store -> conversation UI,
 numbers and GSM timestamps intact) and a send completes with `rc=0` in about a
@@ -759,8 +758,8 @@ Both apps appear in the Apps menu via `calls.desktop`/`messages.desktop`.
 
 Partly working: calls. They reach `active` on the modem (twice on 14 Sep,
 07:17:12-19 and 07:17:48-54, dialing -> ringing-out -> active) and an inbound
-call reached `ringing-in` (07:20:13). What is *not* verified is audio on a
-connected call: no live sample of `pcm6{p,c}` while `active` exists, and the
+call reached `ringing-in` (07:20:13). Audio on a connected call does not work:
+no live sample of `pcm6{p,c}` while `active` exists, and the
 watcher now logs the FE state on every profile flip to close that gap on the
 next call. 81voltd supplies the IMS data bearer, not SIP signalling or media.
 See "VoLTE: 81voltd closes most of the gap". Bluetooth (firmware loads, HCI
