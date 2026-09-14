@@ -478,6 +478,26 @@ assert old in s, "menu onVisibleChanged anchor not found; upstream Menu.qml chan
 s = s.replace(old, '    onVisibleChanged: if (!visible) { cardTop = -1; maxRowsHeight = -1; fajitaOskHide.running = true }\n', 1)
 open(p, "w").write(s); print("patched menu osk hide")
 PY14
+
+# 15) Notification card width: upstream sizes toasts for a desktop (380 style
+# units). With this theme's spacing scale that exceeds the 540px logical
+# screen, and the popup column anchors right, so the card hangs off the left
+# edge ("SMS from +44…" clipped to "om +44…"). Clamp to the card's own screen
+# minus toast margins; Layout.fillWidth inside reflows the text.
+C=/usr/share/omarchy/shell/plugins/notifications/components/NotificationCard.qml
+sudo cp -n "$C" "$C.orig" 2>/dev/null || true
+sudo python3 - "$C" <<'PY15'
+import sys
+p=sys.argv[1]; s=open(p).read()
+old="  implicitWidth: Style.space(380)"
+new="""  // Phone port: clamp to the screen so the card cannot overflow the panel
+  // (upstream's 380 assumes a desktop monitor). Popup margins are gapsOut.
+  implicitWidth: Math.min(Style.space(380), Screen.width - Style.gapsOut * 2)"""
+if "Screen.width - Style.gapsOut * 2" in s:
+    print("already patched notification card"); sys.exit(0)
+assert old in s, "notification card width anchor not found; upstream NotificationCard.qml changed"
+open(p,"w").write(s.replace(old,new,1)); print("patched notification card")
+PY15
 omarchy-restart-shell >/dev/null 2>&1 || true
 # the shell remaps its bar; restart the clock row so it lands beneath it again
 systemctl --user reset-failed waybar.service 2>/dev/null || true
