@@ -610,13 +610,15 @@ touches this interface; data stays on `qmapmux0.0` via the `three` profile.
 
 One thing is still untested rather than broken:
 
-- **Calls do not connect, but they no longer die.** Before 81voltd a dial
-  terminated after ~7-25s; with the IMS bearer up it stays in `dialing`
-  indefinitely (>24s observed) and the card profile flips to `Voice Call`, so
-  the SIP leg is being attempted. Whether the far end rings is untested — it
-  needs someone holding the other handset. Note that 81voltd provides the IMS
-  *data* bearer only, not SIP signalling or media, so a working VoLTE call may
-  well need more than this.
+- **Calls connect; audio on a connected call is unverified.** With the IMS
+  bearer up, dials went `dialing -> ringing-out -> active -> terminated` (two on
+  14 Sep, 07:17:12-19 and 07:17:48-54, ~7s and ~6s in `active`) and an inbound
+  call reached `ringing-in` (07:20:13); before 81voltd the same dial terminated
+  in ~7-25s and inbound never paged the device at all. The card profile flips to
+  `Voice Call` and q6voiced opens both `pcm6` substreams while dialing, but no
+  sample of the PCM state exists for a call while `active`; the watcher now logs
+  it on every profile flip, so the next call settles it. 81voltd provides the
+  IMS *data* bearer only, not SIP signalling or media.
 
 **81voltd needs verify-and-retry, not a precondition.** The modem asks for its
 IMS PDN exactly once, when the service appears on QRTR, and 81voltd makes one
