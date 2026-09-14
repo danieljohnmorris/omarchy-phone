@@ -30,7 +30,9 @@ ShellRoot {
   property string callRoute: "earpiece" // live-call output: earpiece|speaker|headset
   property bool levelOn: true // mic strip on by default (asked-for feature); tap "level" to disable for a capture-free call
   property bool micMuted: false // uplink gated at the AFE capture mixers; seeded from kernel truth
-  property var audioTicks: []   // [{v:0..1}] dB-scaled mic level per 0.5s, newest last (max 60)
+  property var micHist: []    // "you": mic RMS 0..100 (dB-scaled), newest last
+  property var sessHist: []   // "them": 1 = voice FE RUNNING (network sending media), 0.08 = silent
+  readonly property int graphPoints: 60
   property string lastError: ""
 
   // Pre-load fallbacks only; every colour below is replaced from the active
@@ -95,6 +97,32 @@ ShellRoot {
   function setRoute(r) {
     root.callRoute = r
     root.run("fajita-call-route " + r)
+  }
+
+  // Panel-style history painter (same shape as fajita.cellular Panel.qml):
+  // baseline plus a right-aligned line, one series per canvas.
+  function paintSeries(cv, data, fixedPeak, color) {
+    var ctx = cv.getContext("2d")
+    ctx.clearRect(0, 0, cv.width, cv.height)
+    ctx.strokeStyle = String(root.cMuted)
+    ctx.globalAlpha = 0.35
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.moveTo(0, cv.height - 0.5)
+    ctx.lineTo(cv.width, cv.height - 0.5)
+    ctx.stroke()
+    ctx.globalAlpha = 1
+    if (data.length < 2) return
+    ctx.strokeStyle = color
+    ctx.lineWidth = 1.5
+    ctx.beginPath()
+    for (var j = 0; j < data.length; j++) {
+      var x = cv.width - (data.length - 1 - j) * (cv.width / (root.graphPoints - 1))
+      var y = cv.height - 2 - (data[j] / fixedPeak) * (cv.height - 6)
+      if (j === 0) ctx.moveTo(x, y)
+      else ctx.lineTo(x, y)
+    }
+    ctx.stroke()
   }
 
   function stateText(state, path) {
@@ -175,13 +203,29 @@ ShellRoot {
     id: rescan
     running: false
     command: ["bash", "-lc",
-      "fajita-call list; echo __ACTIVE__; cat ~/.local/state/fajita/call-active 2>/dev/null"]
+      "fajita-call list; echo __ACTIVE__; cat ~/.local/state/fajita/call-active 2>/dev/null; " +
+      "echo __FE__; grep -m1 '^state' /proc/asound/card0/pcm6p/sub0/status 2>/dev/null"]
     property var out: []
     property bool inActive: false
-    onRunningChanged: { out = []; inActive = false }
+    property bool inFe: false
+    onRunningChanged: { out = []; inActive = false; inFe = false }
     stdout: SplitParser {
       onRead: data => {
         if (data.trim() === "__ACTIVE__") { rescan.inActive = true; return }
+        if (data.trim() === "__FE__") { rescan.inActive = false; rescan.inFe = true; return }
+        if (rescan.inFe) {
+          // "Them": the hostless voice FE only enters RUNNING when the
+          // network actually sends media — the one downlink observable
+          // Linux has on this SoC (amplitude never becomes host PCM).
+          var m = /^state:\s*(\S+)/.exec(data)
+          if (m) {
+            var t = root.sessHist.concat([m[1] === "RUNNING" ? 1 : 0.08])
+            if (t.length > root.graphPoints) t = t.slice(t.length - root.graphPoints)
+            root.sessHist = t
+            sessGraph.requestPaint()
+          }
+          return
+        }
         if (rescan.inActive) {
           // path|epoch from the watcher. Overwrites unconditionally: the
           // list lines above run first in this same stream and stamp
@@ -254,14 +298,15 @@ ShellRoot {
     id: levelProbe
     running: root.open && root.calls.length > 0 && root.levelOn
     command: ["bash", "-lc", "exec fajita-call-level"]
-    onRunningChanged: if (running) root.audioTicks = []
+    onRunningChanged: if (running) root.micHist = []
     stdout: SplitParser {
       onRead: data => {
         var n = parseInt(data.trim(), 10)
         if (isNaN(n)) return
-        var t = root.audioTicks.concat([{ v: n / 100 }])
-        if (t.length > 60) t = t.slice(t.length - 60)
-        root.audioTicks = t
+        var t = root.micHist.concat([n])
+        if (t.length > root.graphPoints) t = t.slice(t.length - root.graphPoints)
+        root.micHist = t
+        micGraph.requestPaint()
       }
     }
   }
@@ -373,64 +418,93 @@ ShellRoot {
           }
         }
 
-        // Mic level over time (opt-in): one bar per 0.5s sample from
-        // fajita-call-level — height is dB-scaled loudness, green means
-        // sound. The chip enables/disables the capture itself; see the
-        // levelProbe comment for why it must not always run.
+        // Two live graphs, same shape as the cellular panel's:
+        //   "you"  — mic level over time (fajita-call-level capture, dB-scaled
+        //            0..100). Moves while you are audible into the call.
+        //   "them" — the ADSP voice session. The hostless FE only enters
+        //            RUNNING when the network actually sends media, so the
+        //            line sits near zero until real call audio flows (its
+        //            amplitude is not tappable on this SoC — state is the
+        //            one honest downlink observable).
+        // The chip toggles only the mic capture ("you"); "them" is read-only.
         ColumnLayout {
           visible: root.calls.length > 0
           Layout.fillWidth: true
           spacing: 4
 
-          Rectangle {
-            Layout.alignment: Qt.AlignHCenter
-            Layout.preferredWidth: levelLbl.implicitWidth + 24
-            Layout.preferredHeight: 28
-            radius: 8
-            color: root.levelOn ? root.cAccent : root.cRow
-
-            Text {
-              id: levelLbl
-              anchors.centerIn: parent
-              text: root.levelOn ? "level ✓" : "level"
-              color: root.levelOn ? root.cBg : root.cMuted
-              font.family: "JetBrainsMono Nerd Font"
-              font.pixelSize: 11
-            }
-            MouseArea {
-              anchors.fill: parent
-              onClicked: root.levelOn = !root.levelOn
-            }
-          }
-
-          Row {
-            visible: root.levelOn
-            spacing: 2
+          // "you" label + capture toggle sit directly above the mic graph.
+          RowLayout {
             Layout.fillWidth: true
-            Layout.alignment: Qt.AlignHCenter
-            Layout.preferredHeight: 36
-
-            Repeater {
-              model: root.audioTicks
-              Rectangle {
-                required property var modelData
-                width: 8
-                height: 4 + 30 * modelData.v
-                radius: 2
-                anchors.bottom: parent.bottom // bars grow from the baseline
-                color: modelData.v > 0.05 ? root.cGreen : root.cRow
+            spacing: 6
+            Text {
+              text: "you"
+              color: root.levelOn ? root.cGreen : root.cMuted
+              font.family: "JetBrainsMono Nerd Font"
+              font.pixelSize: 10
+            }
+            Rectangle {
+              id: levelChip
+              Layout.preferredWidth: levelLbl.implicitWidth + 20
+              Layout.preferredHeight: 22
+              radius: 6
+              color: root.levelOn ? root.cAccent : root.cRow
+              Text {
+                id: levelLbl
+                anchors.centerIn: parent
+                text: root.levelOn ? "mic on" : "mic off"
+                color: root.levelOn ? root.cBg : root.cMuted
+                font.family: "JetBrainsMono Nerd Font"
+                font.pixelSize: 10
+              }
+              MouseArea {
+                anchors.fill: parent
+                onClicked: root.levelOn = !root.levelOn
               }
             }
+            Item { Layout.fillWidth: true }
           }
+
+          Canvas {
+            id: micGraph
+            Layout.fillWidth: true
+            Layout.preferredHeight: 34
+            onWidthChanged: requestPaint()
+            onHeightChanged: requestPaint()
+            onPaint: root.paintSeries(this, root.micHist, 100,
+              root.levelOn ? String(root.cGreen) : String(root.cMuted))
+          }
+
+          // "them" label above its own graph, then the verdict caption: a
+          // flat line is the honest result (no media) and must not read as a
+          // broken graph.
           Text {
-            visible: root.levelOn
-            text: "your mic — bars move while you are audible"
+            Layout.fillWidth: true
+            text: "them"
             color: root.cMuted
             font.family: "JetBrainsMono Nerd Font"
             font.pixelSize: 10
-            Layout.alignment: Qt.AlignHCenter
           }
+          Canvas {
+            id: sessGraph
+            Layout.fillWidth: true
+            Layout.preferredHeight: 34
+            onWidthChanged: requestPaint()
+            onHeightChanged: requestPaint()
+            onPaint: root.paintSeries(this, root.sessHist, 1, String(root.cAccent))
+          }
+          Text {
+            Layout.fillWidth: true
+            horizontalAlignment: Text.AlignHCenter
+            text: (root.sessHist.length && root.sessHist[root.sessHist.length - 1] > 0.5)
+              ? "call audio flowing" : "no audio from network"
+            color: (root.sessHist.length && root.sessHist[root.sessHist.length - 1] > 0.5)
+              ? root.cGreen : root.cMuted
+            font.family: "JetBrainsMono Nerd Font"
+            font.pixelSize: 10
+          }
+
         }
+
 
         // Live calls
         Repeater {
