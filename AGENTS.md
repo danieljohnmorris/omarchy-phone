@@ -14,7 +14,8 @@ The device folder README is the detailed journal; this file is the map.
   - `config.env`: shared settings (phone user, USB subnet 172.16.42.1, proxy
     port). Sourced by every script; override via environment.
   - `patches/`: shell (QML/Lua) patches applied on the phone by
-    `scripts/rootfs/apply-shell-patches.sh` / `phone-setup.sh`.
+    `scripts/phone/apply-shell-patches.sh` (ships to `~/.local/bin`; run by
+    `phone-setup.sh` and by `fajita-omarchy-update` after upgrades).
   - `scripts/`: host-side build and flash scripts.
   - `scripts/phone/`: files copied verbatim onto the phone: Quickshell apps
     (`calls.qml`, `messages.qml`), `fajita-*` helpers, systemd units, polkit
