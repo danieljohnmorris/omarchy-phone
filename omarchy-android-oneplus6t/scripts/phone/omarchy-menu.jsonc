@@ -46,6 +46,16 @@
     "description": "Wallpaper previews, tap to apply",
     "action": "theme=$(omarchy-theme-switcher); [[ -n $theme ]] && omarchy-theme-set \"$theme\""
   },
+  // Background: same mirror, same reason. Action is upstream's style.background
+  // row verbatim (omarchy-theme-bg-switcher picks via omarchy-menu-images,
+  // which is touch-driven; its previews are wallpapers, so the phone-size
+  // problem that needed the theme-switcher shim does not apply here).
+  "system.background": {
+    "icon": "\uf03e",
+    "label": "Background",
+    "description": "Change wallpaper, keep theme",
+    "action": "background=$(omarchy-theme-bg-switcher); [[ -n $background ]] && omarchy-theme-bg-set \"$background\""
+  },
   "system.bootloader": {
     "icon": "󰚥",
     "label": "Reboot to bootloader",

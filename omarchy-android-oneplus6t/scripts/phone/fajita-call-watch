@@ -10,7 +10,8 @@
 #      when no UI is running, and re-notify incoming calls once per path.
 #   3. Ingest incoming SMS into the fajita-sms store (modem storage is then
 #      emptied), raise messages.qml, notify once per object path.
-#
+#   4. Append every ended call to the call log (Recents in calls.qml):
+#      number, direction, answered, duration.
 # Reconcile is idempotent. DBus signals are the mechanism; a 60s poll (plus a
 # 10-minute SMS sweep) is only a safety net for a missed signal, so an idle
 # phone is not woken twelve times a minute.
@@ -19,6 +20,10 @@ set -uo pipefail
 export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
 CARD="alsa_card.platform-sound"
 declare -A notified   # call/SMS path -> 1, so one notify per object
+CALLLOG="$HOME/.local/state/fajita/calls.jsonl"
+# Per-call bookkeeping for the log line written when the object vanishes:
+# first-seen time, direction, number, and when it first went active.
+declare -A c_t0 c_dir c_num c_ans
 
 # True when any call in the snapshot needs the call-audio path. Matches
 # q6voiced's own predicate (dialing/ringing-out/active) plus the inbound pair:
@@ -75,9 +80,15 @@ reconcile() {
 
   # --- incoming call: UI + one-shot notify per call path ---
   local live=""
+  local now; now=$(date +%s)
   while IFS='|' read -r path state _dir number; do
     [ -n "$path" ] || continue
     live="$live $path"
+    # Track from first sighting; `answered` = first tick reporting active.
+    if [ -z "${c_t0[$path]:-}" ]; then
+      c_t0[$path]=$now; c_dir[$path]=$_dir; c_num[$path]=$number
+    fi
+    if [ "$state" = active ] && [ -z "${c_ans[$path]:-}" ]; then c_ans[$path]=$now; fi
     case "$state" in
       incoming|ringing-in|ringingin)
         raise calls
@@ -89,14 +100,29 @@ reconcile() {
     esac
   done <<< "$calls"
 
-  # --- prune per-call notified entries whose objects are gone ---
-  local p
-  for p in "${!notified[@]}"; do
+  # --- prune per-call bookkeeping whose objects are gone; log ended calls ---
+  # `fajita-call list` reaps terminated calls itself, so a vanished path means
+  # the call ended: append one JSON line to the call log (the Recents view's
+  # data source) and drop the notified marker with it.
+  local p ans answered dur
+  for p in "${!c_t0[@]}"; do
     case "$p" in
-      /org/freedesktop/ModemManager1/Call/*)
-        [[ " $live " == *" $p "* ]] || unset "notified[$p]"
-        ;;
+      /org/freedesktop/ModemManager1/Call/*) ;;
+      *) continue ;;
     esac
+    [[ " $live " == *" $p "* ]] && continue
+    now=$(date +%s)
+    ans=${c_ans[$p]:-0}
+    if [ "$ans" -gt 0 ]; then answered=true; dur=$((now - ans))
+    else answered=false; dur=0; fi
+    jq -cn --argjson ts "${c_t0[$p]}" \
+      --arg dir "$([ "${c_dir[$p]}" = incoming ] && echo in || echo out)" \
+      --arg number "${c_num[$p]:-unknown}" \
+      --argjson answered "$answered" --argjson dur "$dur" \
+      '{ts:$ts,dir:$dir,number:$number,answered:$answered,dur:$dur}' \
+      >> "$CALLLOG" 2>/dev/null || true
+    unset "c_t0[$p]" "c_dir[$p]" "c_num[$p]" "c_ans[$p]"
+    unset "notified[$p]"
   done
 }
 

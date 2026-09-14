@@ -4,11 +4,16 @@
 #   fajita-call-audio-diag NUMBER        # outbound call, sampled till it ends
 #   fajita-call-audio-diag --sample      # just sample whatever call is running
 #
-# PCM state/pointers are telemetry only: q6voiced opens+prepares but never
+# The decisive routing state is sampled per-tick while the call is up: after
+# teardown the watcher flips back to HiFi and the end dump reads HiFi-era
+# values. While active you want: verb=Voice_Call, vrx/vtx=1 (the verb's own
+# EnableSequence), inp0=RX0 and adcmux7=AMIC amicmux7=ADC4 (the Earpiece/Mic
+# SectionDevices). ZERO/blank there = verb applied but devices never enabled.
+#
+ # PCM state/pointers are telemetry only: q6voiced opens+prepares but never
 # writes (hostless link), so static pointers do not prove failure. FE_OPEN
-# during a call proves q6voiced did its part. The decisive checks are in the
-# end dump: `_verb` must be `Voice Call`, the two Voice csets must be 1, and
-# there must be audible audio (voicemail greeting = downlink-only test).
+# during a call proves q6voiced did its part. Audible audio is the final
+# verdict (voicemail greeting = downlink-only test).
 #
 # Also watched:
 #   pactl card profile      watcher's HiFi <-> Voice Call flip; flapping means
@@ -24,6 +29,9 @@ TICK=0.5
 pcm_val() { # $1 = pcm6p|pcm6c, $2 = state|hw_ptr
   awk -v f="$2" '{ t=$1; gsub(/:/, "", t); if (t == f) { print $NF; exit } }' \
     /proc/asound/$FE/$1/sub0/status 2>/dev/null
+
+cval() { # $1 = mixer control name -> its value (blank if absent)
+  amixer -c0 cget "name='$1'" 2>/dev/null | sed -n 's/.*: values=\(.*\)/\1/p' | head -1
 }
 
 # shellcheck disable=SC2034
@@ -53,7 +61,15 @@ sample() { # sets: line, n_calls, p_state p_dp, c_state c_dc
   else verdict=FE_PARTIAL
   fi
 
-  line="$(date +%H:%M:%S) calls=$n_calls pcm6p=${p_state}/+${p_dp} pcm6c=${c_state}/+${c_dc} profile=${prof:-?} rate=${rate} $verdict"
+
+  # Routing state, only while a call is up (keeps idle ticks short).
+  if [ "$n_calls" -gt 0 ]; then
+    local v
+    v=$(alsaucm -c 0 get _verb 2>/dev/null || alsaucm -c O6T get _verb 2>/dev/null)
+    v=${v##*: }; v=${v//[[:space:]]/_}; v=${v:-none}
+    line="$line verb=$v vrx=$(cval 'SLIMBUS_0_RX Voice Mixer VoiceMMode1')"\
+" vtx=$(cval 'VoiceMMode1 Capture Mixer SLIMBUS_0_TX') inp0=$(cval 'RX INT0_1 MIX1 INP0') adcmux7=$(cval 'ADC MUX7') amicmux7=$(cval 'AMIC MUX7')"
+  fi
 }
 
 if [ "${1:-}" = --sample ]; then

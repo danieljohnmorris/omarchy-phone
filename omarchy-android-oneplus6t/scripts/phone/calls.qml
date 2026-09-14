@@ -23,6 +23,8 @@ ShellRoot {
   property var calls: []          // [{path,state,dir,number}]
   property string dial: ""        // number being typed
   property var callStart: ({})    // path -> epoch ms when first seen active
+  property string tab: "recents"  // idle view: "recents" | "keypad"
+  property var log: []            // call log [{ts,dir,number,answered,dur}] oldest first
   property string lastError: ""
 
   // Pre-load fallbacks only; every colour below is replaced from the active
@@ -62,6 +64,7 @@ ShellRoot {
     root.open = !root.open
     if (root.open) {
       rescan.running = true // restarting a running Process re-runs it
+      logLoad.running = true
       quitTimer.stop()
     }
   }
@@ -93,6 +96,16 @@ ShellRoot {
     return state === "incoming" || state === "ringing-in"
   }
 
+  // Call-log formatting: "14/9 07:17" and "m:ss".
+  function stamp(ts) {
+    var d = new Date(ts * 1000)
+    var hm = ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2)
+    return (d.getMonth() + 1) + "/" + d.getDate() + " " + hm
+  }
+  function durText(s) {
+    return Math.floor(s / 60) + ":" + ("0" + Math.floor(s % 60)).slice(-2)
+  }
+
   IpcHandler {
     target: "fajita-calls"
 
@@ -111,22 +124,55 @@ ShellRoot {
     onExited: rescan.running = true // reflect the new call state immediately
   }
 
+  // fajita-call list poll. Lines accumulate into `out`; the swap happens in
+  // one go on exit. Clearing root.calls per tick (the old shape) made the
+  // keypad flash for the ~100ms each rescan takes while a call was live —
+  // the dialer's visibility keys on list length.
   Process {
     id: rescan
     running: false
     command: ["bash", "-lc", "fajita-call list"]
+    property var out: []
+    onRunningChanged: if (running) out = []
     stdout: SplitParser {
       onRead: data => {
         var p = data.split("|")
         if (p.length < 4 || p[0].indexOf("/Call/") < 0) return
         var c = { path: p[0], state: p[1], dir: p[2], number: p[3] || "unknown" }
         if (c.state === "active" && !root.callStart[c.path]) root.callStart[c.path] = Date.now()
-        var out = root.calls.filter(x => x.path !== c.path)
-        out.push(c)
-        root.calls = out
+        rescan.out = rescan.out.filter(x => x.path !== c.path).concat(c)
       }
     }
-    onRunningChanged: if (running) root.calls = []
+    onExited: {
+      var prev = root.calls
+      root.calls = out
+      if (out.length === 0 && prev.length > 0) {
+        // A call ended. Incoming and never answered (caller gave up before
+        // accept): the app was raised for it, close it instead of dropping
+        // to the keypad. Anything else: land on recents with the new entry.
+        var unanswered = prev.some(c => c.dir === "incoming" && !root.callStart[c.path])
+        var connected = prev.some(c => root.callStart[c.path])
+        if (unanswered && !connected) root.open = false
+        else { root.tab = "recents"; logLoad.running = true }
+      }
+    }
+  }
+
+  // Recents: the watcher appends one JSON object per ended call to
+  // ~/.local/state/fajita/calls.jsonl; this reads the tail.
+  Process {
+    id: logLoad
+    running: false
+    command: ["bash", "-lc", "tail -n 200 ~/.local/state/fajita/calls.jsonl 2>/dev/null"]
+    onRunningChanged: if (running) root.log = []
+    stdout: SplitParser {
+      onRead: data => {
+        try {
+          var o = JSON.parse(data)
+          if (o && o.ts) root.log = root.log.concat(o)
+        } catch (e) { /* partial or non-JSON line: skip */ }
+      }
+    }
   }
 
   // Poll while open: far-end answers/hangups arrive as state changes we do
@@ -276,9 +322,123 @@ ShellRoot {
           Layout.fillWidth: true
         }
 
-        // Dialer (hidden while any call is live)
-        ColumnLayout {
+        // Idle views: Recents (default) and Keypad, one visible at a time.
+        // Both hide while any call is live.
+        RowLayout {
           visible: root.calls.length === 0
+          Layout.fillWidth: true
+          spacing: 8
+
+          Repeater {
+            model: ["recents", "keypad"]
+
+            Rectangle {
+              required property string modelData
+              Layout.fillWidth: true
+              height: 36
+              radius: 8
+              color: root.tab === modelData ? root.cRow : root.cBg
+              border.width: 1
+              border.color: root.tab === modelData ? root.cAccent : root.cBg
+
+              Text {
+                anchors.centerIn: parent
+                text: modelData
+                color: root.tab === modelData ? root.cText : root.cMuted
+                font.family: "JetBrainsMono Nerd Font"
+                font.pixelSize: 13
+              }
+              MouseArea {
+                anchors.fill: parent
+                onClicked: root.tab = modelData
+              }
+            }
+          }
+        }
+
+        // Recents, newest first: direction glyph, number, answered/missed,
+        // duration and date. Tap a row to call back.
+        Flickable {
+          visible: root.calls.length === 0 && root.tab === "recents"
+          Layout.fillWidth: true
+          Layout.fillHeight: true
+          contentHeight: recentsCol.height
+          clip: true
+
+          ColumnLayout {
+            id: recentsCol
+            width: parent.width
+            spacing: 6
+
+            Text {
+              visible: root.log.length === 0
+              text: "no calls yet"
+              color: root.cMuted
+              font.family: "JetBrainsMono Nerd Font"
+              font.pixelSize: 14
+              Layout.fillWidth: true
+              horizontalAlignment: Text.AlignHCenter
+            }
+
+            Repeater {
+              model: root.log.slice().reverse()
+
+              Rectangle {
+                required property var modelData
+                Layout.fillWidth: true
+                height: 58
+                radius: 10
+                color: root.cRow
+
+                RowLayout {
+                  anchors.fill: parent
+                  anchors.margins: 10
+                  spacing: 10
+
+                  Text {
+                    text: modelData.dir === "in" ? "↙" : "↗"
+                    color: modelData.answered ? root.cGreen : root.cRed
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: 18
+                  }
+                  ColumnLayout {
+                    spacing: 2
+                    Layout.fillWidth: true
+
+                    Text {
+                      text: modelData.number
+                      color: modelData.answered ? root.cText : root.cRed
+                      font.family: "JetBrainsMono Nerd Font"
+                      font.pixelSize: 16
+                      elide: Text.ElideRight
+                      Layout.fillWidth: true
+                    }
+                    Text {
+                      text: (!modelData.answered
+                             ? (modelData.dir === "in" ? "missed" : "no answer")
+                             : root.durText(modelData.dur)) + "  " + root.stamp(modelData.ts)
+                      color: root.cMuted
+                      font.family: "JetBrainsMono Nerd Font"
+                      font.pixelSize: 11
+                    }
+                  }
+                }
+                MouseArea {
+                  anchors.fill: parent
+                  // Tap to call back. Short codes and alphanumerics excluded
+                  // the same way the keypad's call button does.
+                  onClicked: if (/^[+0-9][0-9 +()-]*$/.test(modelData.number)) {
+                    root.run("fajita-call start '" + modelData.number + "'")
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        // Keypad (hidden while any call is live, or on the recents tab)
+        ColumnLayout {
+          visible: root.calls.length === 0 && root.tab === "keypad"
           Layout.fillWidth: true
           Layout.fillHeight: true
           spacing: 8
