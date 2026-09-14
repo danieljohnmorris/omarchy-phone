@@ -25,6 +25,8 @@ ShellRoot {
   property var callStart: ({})    // path -> epoch ms when first seen active
   property string tab: "recents"  // idle view: "recents" | "keypad"
   property var log: []            // call log [{ts,dir,number,answered,dur}] oldest first
+  property string callRoute: "earpiece" // live-call output: earpiece|speaker|headset
+  property var audioTicks: []      // [{p,c}] FE state per second, newest last (max 40)
   property string lastError: ""
 
   // Pre-load fallbacks only; every colour below is replaced from the active
@@ -79,6 +81,14 @@ ShellRoot {
     root.lastError = ""
     proc.command = ["bash", "-lc", cmd]
     proc.running = true
+  }
+
+  // Call audio destination. fajita-call-route flips the hostless voice
+  // FE's AFE mixers (no profile change, safe mid-call); optimistic set,
+  // the csets are deterministic.
+  function setRoute(r) {
+    root.callRoute = r
+    root.run("fajita-call-route " + r)
   }
 
   function stateText(state, path) {
@@ -211,6 +221,33 @@ ShellRoot {
     onTriggered: if (!rescan.running) rescan.running = true
   }
 
+  // Audio-over-time strip: per-second samples of both voice-FE substream
+  // states. This is the honest observable (hostless FEs never move hw_ptr);
+  // RUNNING bars would mean the ADSP session actually started.
+  Process {
+    id: audioProbe
+    running: false
+    command: ["bash", "-lc",
+      "for d in pcm6p pcm6c; do s=$(sed -n 's/^state: //p' /proc/asound/card0/$d/sub0/status 2>/dev/null | head -1); echo \"${s:-closed}\"; done"]
+    property var out: []
+    onRunningChanged: if (running) out = []
+    stdout: SplitParser { onRead: data => { if (data.trim()) audioProbe.out.push(data.trim()) } }
+    onExited: {
+      if (audioProbe.out.length >= 2) {
+        var t = root.audioTicks.concat([{ p: audioProbe.out[0], c: audioProbe.out[1] }])
+        if (t.length > 40) t = t.slice(t.length - 40)
+        root.audioTicks = t
+      }
+    }
+  }
+  Timer {
+    id: audioTimer
+    interval: 1000
+    repeat: true
+    running: root.open && root.calls.length > 0
+    onTriggered: if (!audioProbe.running) audioProbe.running = true
+  }
+
   Timer {
     id: quitTimer
     interval: 15000
@@ -296,6 +333,51 @@ ShellRoot {
           }
         }
 
+        // Audio over time: one bar per second per direction. green = the
+        // voice FE is RUNNING (audio flowing), accent = open but idle,
+        // row = closed. Flat accent = call up, ADSP session never started.
+        ColumnLayout {
+          visible: root.calls.length > 0
+          Layout.fillWidth: true
+          spacing: 4
+
+          Row {
+            spacing: 2
+            Layout.fillWidth: true
+            Layout.alignment: Qt.AlignHCenter
+            Repeater {
+              model: root.audioTicks
+              Rectangle {
+                required property var modelData
+                width: 8; height: 22; radius: 2
+                color: modelData.p === "RUNNING" ? root.cGreen
+                     : modelData.p === "PREPARED" ? root.cAccent : root.cRow
+              }
+            }
+          }
+          Row {
+            spacing: 2
+            Layout.fillWidth: true
+            Layout.alignment: Qt.AlignHCenter
+            Repeater {
+              model: root.audioTicks
+              Rectangle {
+                required property var modelData
+                width: 8; height: 22; radius: 2
+                color: modelData.c === "RUNNING" ? root.cGreen
+                     : modelData.c === "PREPARED" ? root.cAccent : root.cRow
+              }
+            }
+          }
+          Text {
+            text: "down / up — green means audio flowing"
+            color: root.cMuted
+            font.family: "JetBrainsMono Nerd Font"
+            font.pixelSize: 10
+            Layout.alignment: Qt.AlignHCenter
+          }
+        }
+
         // Live calls
         Repeater {
           model: root.calls
@@ -363,6 +445,37 @@ ShellRoot {
                 MouseArea {
                   anchors.fill: parent
                   onClicked: root.run("fajita-call hangup '" + modelData.path + "'")
+                }
+            }
+            }
+
+            // Output picker: earpiece / speaker / wired headset. Pure AFE
+            // mixer switching (fajita-call-route), applies mid-call.
+            RowLayout {
+              Layout.fillWidth: true
+              spacing: 8
+
+              Repeater {
+                model: ["earpiece", "speaker", "headset"]
+
+                Rectangle {
+                  required property string modelData
+                  Layout.fillWidth: true
+                  Layout.preferredHeight: 44
+                  radius: 8
+                  color: root.callRoute === modelData ? root.cAccent : root.cRow
+
+                  Text {
+                    anchors.centerIn: parent
+                    text: modelData
+                    color: root.callRoute === modelData ? root.cBg : root.cMuted
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: 13
+                  }
+                  MouseArea {
+                    anchors.fill: parent
+                    onClicked: root.setRoute(modelData)
+                  }
                 }
               }
             }

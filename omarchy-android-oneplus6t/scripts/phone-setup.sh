@@ -238,18 +238,19 @@ ssh $PH 'mkdir -p ~/.local/bin ~/.config/fajita ~/.config/systemd/user ~/.local/
 # the 14 Sep deploys); tar over one stream needs neither sftp nor a
 # bracketed-v6 target. Remote side stages, then installs each file.
 tar -cf - -C "$HERE/phone" \
-  fajita-call fajita-sms fajita-call-watch fajita-app fajita-call-audio-diag fajita-osk-show \
+  fajita-call fajita-sms fajita-call-watch fajita-app fajita-call-audio-diag fajita-osk-show fajita-call-route \
   calls.qml messages.qml fajita-call-watch.service calls.desktop messages.desktop \
   | ssh $PH 'set -e; rm -rf /tmp/fdeploy; mkdir -p /tmp/fdeploy
     tar -xf - -C /tmp/fdeploy
     install -m755 /tmp/fdeploy/fajita-call /tmp/fdeploy/fajita-sms \
       /tmp/fdeploy/fajita-call-watch /tmp/fdeploy/fajita-app \
-      /tmp/fdeploy/fajita-call-audio-diag /tmp/fdeploy/fajita-osk-show ~/.local/bin/
+      /tmp/fdeploy/fajita-call-audio-diag /tmp/fdeploy/fajita-osk-show \
+      /tmp/fdeploy/fajita-call-route ~/.local/bin/
     install -m644 /tmp/fdeploy/calls.qml /tmp/fdeploy/messages.qml ~/.config/fajita/
     install -m644 /tmp/fdeploy/fajita-call-watch.service ~/.config/systemd/user/
     install -m644 /tmp/fdeploy/calls.desktop /tmp/fdeploy/messages.desktop ~/.local/share/applications/
     rm -rf /tmp/fdeploy'
-ssh $PH 'chmod +x ~/.local/bin/fajita-call ~/.local/bin/fajita-sms ~/.local/bin/fajita-call-watch ~/.local/bin/fajita-app ~/.local/bin/fajita-call-audio-diag
+ssh $PH 'chmod +x ~/.local/bin/fajita-call ~/.local/bin/fajita-sms ~/.local/bin/fajita-call-watch ~/.local/bin/fajita-app ~/.local/bin/fajita-call-audio-diag ~/.local/bin/fajita-call-route
   systemctl --user daemon-reload
   # enable --now is a no-op on an already-running unit, which would leave the
   # previous fajita-call-watch code live after a re-deploy; restart explicitly.

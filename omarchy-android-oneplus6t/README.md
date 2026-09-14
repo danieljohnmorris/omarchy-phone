@@ -455,7 +455,15 @@ Apps menu (`calls.desktop` / `messages.desktop`) or by the watcher on an event:
   call log) and dialer (keypad) when idle, live call screen (accept/hangup,
   duration) while ModemManager has a call. Talks to `fajita-call`. Closing the
   window (✕, Close app, compositor close) hangs up any live call first —
-  nothing else owns hang-up once the app is gone.
+  nothing else owns hang-up once the app is gone. The live screen also shows
+  an output picker (earpiece / speaker / wired headset) and an audio-over-time
+  strip: one bar per second per direction, green when the voice FE is
+  `RUNNING`. On this box every bar is accent (open but idle) — the FE never
+  runs, the honest display of the media-session gap below.
+  `fajita-call-route` switches the hostless FE's AFE mixers mid-call (no
+  profile change): speaker is `QUAT_MI2S_RX` (TFA amp), headset is
+  `SLIMBUS_1_RX` + `SLIMBUS_2_TX` capture, earpiece restores the verb default
+  (`SLIMBUS_0_RX`).
 - `messages.qml` — thread list, conversation, new message. Talks to
   `fajita-sms`; history is `~/.local/state/fajita/messages.jsonl` (one JSON
   object per line, the helper is the only writer).

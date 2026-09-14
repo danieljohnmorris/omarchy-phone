@@ -83,7 +83,7 @@ if [ "${1:-}" = --sample ]; then
 else
   [ $# -ge 1 ] || { echo "usage: $0 NUMBER | --sample" >&2; exit 2; }
   echo "== starting call to $1 =="
-  fajita-call dial "$1" || true
+  fajita-call start "$1" || true
 fi
 
 echo "== sampling every ${TICK}s (stops when the call ends and the FE closes) =="
