@@ -225,6 +225,10 @@ scp -q "$HERE/phone/51-fajita-modem.rules" $PH:/tmp/
 ssh $PH 'sudo install -m644 -o root -g root /tmp/51-fajita-modem.rules /etc/polkit-1/rules.d/51-fajita-modem.rules
   sudo systemctl restart polkit'
 
+# ~/.local/share/applications exists on a phone that already has the Omarchy
+# webapp entries, but not necessarily on a from-scratch run, and scp will not
+# create it.
+ssh $PH 'mkdir -p ~/.local/bin ~/.config/fajita ~/.config/systemd/user ~/.local/share/applications ~/.local/state/fajita'
 scp -q "$HERE/phone/fajita-call" "$HERE/phone/fajita-sms" "$HERE/phone/fajita-call-watch" $PH:.local/bin/
 scp -q "$HERE/phone/calls.qml" "$HERE/phone/messages.qml" $PH:.config/fajita/
 scp -q "$HERE/phone/fajita-call-watch.service" $PH:.config/systemd/user/

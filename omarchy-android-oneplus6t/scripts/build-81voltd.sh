@@ -37,7 +37,11 @@ docker run --rm -i \
       libglib2.0-dev libmm-glib-dev >/dev/null
 
     # qrtr: headers + shared lib the daemon links against.
-    git clone -q --depth 1 https://github.com/linux-msm/qrtr /qrtr
+    # Pinned to the commit build-qcom-services.sh installs on the device
+    # (qrtr r126.ae88108), so these headers match the libqrtr.so.1 the binary
+    # loads there. Tip builds fine and then skews silently.
+    git clone -q https://github.com/linux-msm/qrtr /qrtr
+    ( cd /qrtr && git checkout -q ae88108 )
     meson setup /qrtr/build /qrtr >/dev/null
     meson install -C /qrtr/build >/dev/null
 

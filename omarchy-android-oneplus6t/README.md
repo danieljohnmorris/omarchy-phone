@@ -565,20 +565,32 @@ calls placed at 23:08 and 23:10. That is the whole receive path proven end to
 end on real traffic: `Modem.Messaging.Added` -> `fajita-sms ingest` -> store ->
 conversation UI.
 
-Two things it does not fix yet, both recorded honestly:
+**The bearer's netdev has to be configured by hand, and that is what makes
+outbound SMS work.** ModemManager creates the IMS bearer and configures
+nothing: the modem hands out a real IPv6 /64 (`bearer.ipv6-config.address`,
+`prefix 64`, `mtu 1280`) while `qmapmux0.1` sits `DOWN` with no address.
+Inbound SMS works anyway, because the modem's own IMS stack rides the PDN
+context rather than host IP — which is exactly why this went unnoticed. Every
+*outbound* submit, though, timed out at 25s with `message-reference` never
+assigned and `QMI protocol error (56): 'WmsMessageDeliveryFailure'` in MM's
+journal; that survived setting the SMSC explicitly and looked like a network
+refusal. It was not. `ip link set qmapmux0.1 up` plus the bearer's own address
+turns the same send from a 25s failure into `rc=0` in about a second, with the
+object gone from the modem and the row in the store. So `fajita-ims-wait` does
+that configuration as well as the verification, reading the address from the
+bearer rather than hardcoding it (the prefix changes between PDN sessions —
+verified by a recovery that came up on a different /64). NetworkManager never
+touches this interface; data stays on `qmapmux0.0` via the `three` profile.
 
-- **Outbound SMS still fails.** Every submit times out at 25s with
-  `message-reference` never assigned, including with the SMSC set explicitly,
-  and the modem's own refusal is `QMI protocol error (56):
-  'WmsMessageDeliveryFailure'`. QMI now emits `SMS on IMS` indications, so the
-  modem knows about the IMS route; this build of qmicli exposes no SMS domain
-  preference option (`--wms-*` offers only routes and CBS channels), so the
-  next thing to try is setting the domain preference over raw QMI.
+One thing is still untested rather than broken:
+
 - **Calls do not connect, but they no longer die.** Before 81voltd a dial
   terminated after ~7-25s; with the IMS bearer up it stays in `dialing`
   indefinitely (>24s observed) and the card profile flips to `Voice Call`, so
   the SIP leg is being attempted. Whether the far end rings is untested — it
-  needs someone holding the other handset.
+  needs someone holding the other handset. Note that 81voltd provides the IMS
+  *data* bearer only, not SIP signalling or media, so a working VoLTE call may
+  well need more than this.
 
 **81voltd needs verify-and-retry, not a precondition.** The modem asks for its
 IMS PDN exactly once, when the service appears on QRTR, and 81voltd makes one
@@ -614,7 +626,9 @@ reach. Re-testing incoming calls with the IMS bearer up is the obvious next
 experiment and needs a second handset.
 
 A SIM on an operator that still runs a circuit-switched radio remains the
-fallback path, since ModemManager's dial then works with no IMS at all. Which
+fallback path *for calls*, since ModemManager's dial then works with no IMS at
+all. It is no longer needed for inbound SMS: 81voltd made that work on this
+VoLTE-only SIM. Which
 operators still meet that is *not* measured here — the rest of this paragraph
 is background as of 2026, from general knowledge rather than from this device,
 and will age: in the UK, EE, Vodafone and O2 (and their MVNOs) kept 2G after
@@ -683,19 +697,24 @@ the live and never-connected cases, the store drives the conversation UI, and
 flipping to the UCM "Voice Call" profile exposes the earpiece sink and call
 mic. The call-audio path itself is verified as far as the network allows: on a
 dial, q6voiced opens both VoiceMMode1 substreams (`PREPARED`, owned by its
-MainPID) and closes them on hangup. **Inbound SMS works**, on real traffic:
-with `81voltd` bringing up the IMS PDN, the operator delivered every message it
-had queued, and `Modem.Messaging.Added` -> `fajita-sms ingest` -> store ->
-conversation UI carried them through with numbers and GSM timestamps intact.
+MainPID) and closes them on hangup. **SMS works in both directions**, on real
+traffic: `81voltd` brings up the IMS PDN and `fajita-ims-wait` configures its
+netdev, after which the operator delivered every message it had queued
+(`Modem.Messaging.Added` -> `fajita-sms ingest` -> store -> conversation UI,
+numbers and GSM timestamps intact) and a send completes with `rc=0` in about a
+second instead of timing out at 25s. That survives a hands-off `systemctl
+restart ModemManager`: the unit retries until the bearer is up, reconfigures
+the interface on whatever /64 the network grants, and sending works again with
+no intervention.
 Both apps also appear in the Apps menu via `calls.desktop`/`messages.desktop`
 as well as the power-key menu.
 
-Not working: outbound SMS (every submit times out at 25s;
-`WmsMessageDeliveryFailure` from the modem) and calls, which since 81voltd sit
-in `dialing` indefinitely rather than terminating — the SIP leg is attempted
-but never connects, and a connected call carrying audio has never been
-observed. Incoming calls were last tested before 81voltd, when the network did
-not page the device at all; that needs re-testing with the IMS bearer up. See
+Not working: calls. Since 81voltd they sit in `dialing` indefinitely rather
+than terminating, so the SIP leg is attempted, but none has connected and a
+call carrying audio has never been observed — 81voltd supplies the IMS data
+bearer only, not SIP signalling or media. Incoming calls were last tested
+before 81voltd, when the network did not page the device at all; that needs
+re-testing with the IMS bearer up. See
 "VoLTE: 81voltd closes most of the gap". Bluetooth (firmware loads, HCI
 reset times out). I haven't tried the camera or sensors.
 
