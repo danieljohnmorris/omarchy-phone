@@ -1,5 +1,5 @@
 #!/bin/bash
-# Switch the live call's audio route: earpiece | headset.
+# Switch the live call's audio route: earpiece | speaker | headset.
 #
 # The hostless VoiceMMode1 FE (opened by q6voiced) feeds whichever AFE ports
 # have "<port> Voice Mixer VoiceMMode1" enabled, so a route change is pure
@@ -25,7 +25,7 @@
 # verb's EnableSequence forces the earpiece muxes and would otherwise revert
 # a mid-call headset selection without touching the mixers query shows.
 #
-#   fajita-call-route earpiece|headset           switch live-call output
+#   fajita-call-route earpiece|speaker|headset   switch live-call output
 #   fajita-call-route mic off|on                 mute / unmute your uplink
 #   fajita-call-route query                      print active route
 #   fajita-call-route mic-query                  print on|off
@@ -34,9 +34,16 @@ set -uo pipefail
 STATE="$HOME/.local/state/fajita/call-route"
 MIC="$HOME/.local/state/fajita/call-mic"
 mkdir -p "$(dirname "$STATE")"
-# A state file written by an older build can still say "speaker", which would
-# re-apply the downlink-killing route on the next unmute or profile flip.
-[ "$(cat "$STATE" 2>/dev/null)" = speaker ] && echo earpiece > "$STATE"
+# The speaker leg is order-sensitive (measured 2026-09-14): enabling
+# "QUAT_MI2S_RX Voice Mixer VoiceMMode1" *before* q6voiced opens the voice rx
+# makes that open fail ("Failed to open rx: Invalid argument", pcm6p stays
+# closed) and the call has no downlink at all. Enabling it on an already-open
+# FE is harmless — the session simply moves to the QUAT backend and releases
+# SLIMBUS_0_RX. So the speaker arm requires an open FE and otherwise falls
+# back to the earpiece rather than deafening the call. Callers that re-apply a
+# saved route at call setup (fajita-call-watch) hit exactly the bad ordering,
+# which is why this route looked permanently broken.
+fe_open() { grep -q '^state' /proc/asound/card0/pcm6p/sub0/status 2>/dev/null; }
 vx()  { amixer -c0 -q cset name="'$1 Voice Mixer VoiceMMode1'" "$2" 2>/dev/null \
           || echo "warn: voice mixer '$1'" >&2; }
 cap() { amixer -c0 -q cset name="'VoiceMMode1 Capture Mixer $1'" "$2" 2>/dev/null \
@@ -68,6 +75,20 @@ case "${1:-query}" in
     cx 'RX INT0 DEM MUX' CLSH_DSM_OUT
     cx 'RX INT0_1 MIX1 INP0' RX0
     vx  SLIMBUS_1_RX off; vx QUAT_MI2S_RX off; hp_off
+    cap SLIMBUS_0_TX on;  cap SLIMBUS_2_TX off
+    reassert_mute
+    ;;
+  speaker)
+    if ! fe_open; then
+      # Apply earpiece for audio now, but keep the recorded pick: the FE opens
+      # a moment later and the next re-apply (or the UI) lands speaker for
+      # real. Overwriting STATE here would silently demote the choice forever.
+      echo "warn: voice FE not open yet; earpiece until it is" >&2
+      FAJITA_ROUTE_NO_SAVE=1 exec "$0" earpiece
+    fi
+    vx  QUAT_MI2S_RX on
+    vx  SLIMBUS_0_RX off; vx SLIMBUS_1_RX off; hp_off
+    cx 'RX INT0_1 MIX1 INP0' ZERO
     cap SLIMBUS_0_TX on;  cap SLIMBUS_2_TX off
     reassert_mute
     ;;
@@ -103,7 +124,7 @@ case "${1:-query}" in
     exit 0
     ;;
    query)
-    for r in "SLIMBUS_0_RX:earpiece" "SLIMBUS_1_RX:headset"; do
+    for r in "SLIMBUS_0_RX:earpiece" "QUAT_MI2S_RX:speaker" "SLIMBUS_1_RX:headset"; do
       port=${r%%:*}; name=${r##*:}
       v=$(amixer -c0 cget name="'$port Voice Mixer VoiceMMode1'" 2>/dev/null |
         sed -n 's/.*: values=//p')
@@ -117,4 +138,7 @@ case "${1:-query}" in
     ;;
 esac
 
-case "${1:-}" in earpiece|headset) echo "$1" > "$STATE";; esac
+case "${1:-}" in
+  earpiece|speaker|headset)
+    [ -n "${FAJITA_ROUTE_NO_SAVE:-}" ] || echo "$1" > "$STATE";;
+esac

@@ -634,19 +634,21 @@ ShellRoot {
             }
             }
 
-            // Output picker: earpiece / wired headset. Pure AFE mixer
-            // switching (fajita-call-route), applies mid-call. No speaker:
-            // the loudspeaker hangs off QUAT_MI2S (TFA amp), and enabling
-            // "QUAT_MI2S_RX Voice Mixer VoiceMMode1" leaves the voice FE with
-            // no valid backend config — q6voiced's rx open then fails EINVAL
-            // and the call has no downlink at all (measured: pcm6p stays
-            // closed). Offering it would be a silent-deafness button.
+            // Output picker: earpiece / speaker / wired headset. Pure AFE
+            // mixer switching (fajita-call-route), applies mid-call.
+            //
+            // Speaker is order-sensitive, not broken: enabling
+            // "QUAT_MI2S_RX Voice Mixer VoiceMMode1" before q6voiced opens
+            // the voice rx makes that open fail EINVAL and the call has no
+            // downlink (measured: pcm6p stays closed). Tapping it here is
+            // always mid-call, so the FE is already open; the script guards
+            // the setup-time path anyway.
             RowLayout {
               Layout.fillWidth: true
               spacing: 8
 
               Repeater {
-                model: ["earpiece", "headset"]
+                model: ["earpiece", "speaker", "headset"]
 
                 Rectangle {
                   required property string modelData

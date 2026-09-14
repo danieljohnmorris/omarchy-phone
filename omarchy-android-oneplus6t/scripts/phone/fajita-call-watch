@@ -74,9 +74,18 @@ reconcile() {
   if [ -n "$cur" ] && [ "$cur" != "$want" ]; then
     pactl set-card-profile "$CARD" "$want" >/dev/null 2>&1 || true
     # The Voice Call verb's EnableSequence forces the earpiece muxes, which
-    # would silently revert a mid-call headset pick. Re-assert the
+    # would silently revert a mid-call speaker/headset pick. Re-assert the
     # user's route (fajita-call-route records it) right after the flip.
+    #
+    # Wait for the voice FE first: enabling the speaker's QUAT_MI2S_RX voice
+    # mixer before q6voiced opens rx makes that open fail and the call has no
+    # downlink at all. This flip runs at call setup, i.e. exactly that window,
+    # so re-applying eagerly is what made "speaker" look permanently broken.
     if [ "$want" = "Voice Call" ] && [ -r "$HOME/.local/state/fajita/call-route" ]; then
+      for _ in 1 2 3 4 5 6 7 8 9 10; do
+        [ -n "$(pcm_state pcm6p)" ] && [ "$(pcm_state pcm6p)" != closed ] && break
+        sleep 0.3
+      done
       fajita-call-route "$(cat "$HOME/.local/state/fajita/call-route")" >/dev/null 2>&1 || true
     fi
     # Log the flip and the q6voice FE state with it: the only open question on
