@@ -15,12 +15,12 @@ W=/work
 OUT=$W/out
 IMG=$OUT/rootfs.img
 MNT=/mnt/rootfs
+SCRIPTS=$W/scripts
+source "$W/config.env" 2>/dev/null || source "$(dirname "$0")/../config.env"
 SIZE=$ROOTFS_SIZE
 KVER=$(ls $W/pmos/x/linux-postmarketos-qcom-sdm845-*/lib/modules/ | head -1)   # e.g. 6.16.7-sdm845
 KPKG=$(ls -d $W/pmos/x/linux-postmarketos-qcom-sdm845-*/ | head -1)
 FWPKG=$(ls -d $W/pmos/x/firmware-oneplus-sdm845-[0-9]*/ | head -1)
-SCRIPTS=$W/scripts
-source "$W/config.env" 2>/dev/null || source "$(dirname "$0")/../config.env"
 USER_NAME=$PHONE_USER
 USER_PASS=$PHONE_PASS
 HOSTNAME_=$PHONE_HOSTNAME

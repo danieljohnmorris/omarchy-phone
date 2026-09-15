@@ -195,8 +195,7 @@ echo "== voice calls + SMS: q6voiced (call audio), helpers, apps, watcher"
 # in a debian:bookworm arm64 container. Committed under phone/ so a setup run
 # needs no Docker, same as the screensaver binary.
 if [ ! -x "$HERE/phone/q6voiced" ]; then
-  "$HERE/build-q6voiced.sh"
-  install -m755 "$HERE/../build/q6voiced/q6voiced" "$HERE/phone/q6voiced"
+  "$HERE/build-q6voiced.sh" # also syncs phone/q6voiced from build output
 fi
 scp -q "$HERE/phone/q6voiced" "$HERE/phone/q6voiced.service" $PH:/tmp/
 ssh $PH 'sudo install -m755 -o root -g root /tmp/q6voiced /usr/local/bin/q6voiced

@@ -2,8 +2,13 @@
 # Mac side: unlock + flash OnePlus 6T (fajita) with the images from work/out.
 # Usage: scripts/flash.sh unlock | flash | boot-test
 set -euo pipefail
-PT=~/Library/Android/sdk/platform-tools
-ADB=$PT/adb; FB=$PT/fastboot
+# Prefer PATH (Linux: android-tools / platform-tools package); fall back to the
+# macOS Android SDK location.
+ADB=$(command -v adb || echo ~/Library/Android/sdk/platform-tools/adb)
+FB=$(command -v fastboot || echo ~/Library/Android/sdk/platform-tools/fastboot)
+for tool in "$ADB" "$FB"; do
+  command -v "$tool" >/dev/null 2>&1 || { echo "missing: $tool — install android-tools/platform-tools"; exit 1; }
+done
 source "$(dirname "$0")/../config.env"
 OUT="$(cd "$(dirname "$0")/.." && pwd)/work/out"
 
