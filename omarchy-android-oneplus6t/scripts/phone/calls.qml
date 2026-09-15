@@ -578,8 +578,12 @@ ShellRoot {
           Text {
             Layout.fillWidth: true
             horizontalAlignment: Text.AlignHCenter
+            // This is FE state, NOT media: both legs PREPARED only means the
+            // hostless voice PCM opened — it cannot see downlink samples, and
+            // it has read like this through calls with no audible audio. There
+            // is no host-visible downlink level on this hardware.
             text: (root.sessHist.length && root.sessHist[root.sessHist.length - 1] > 0.5)
-              ? "voice path open" : "voice path down"
+              ? "voice FE prepared" : "voice FE down"
             color: (root.sessHist.length && root.sessHist[root.sessHist.length - 1] > 0.5)
               ? root.cGreen : root.cRed
             font.family: "JetBrainsMono Nerd Font"
