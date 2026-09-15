@@ -264,12 +264,14 @@ ShellRoot {
           // call. PREPARED on pcm6p alone is not enough either: the kernel
           // only starts the voice path when BOTH legs are open
           // (q6voice_start: "we only start if both RX/TX are active",
-          // started != 3 -> return), so a prepared downlink with a failed
-          // uplink leg means no MVM/CVP session and no media in either
-          // direction, while the old check still read "voice path open".
-          // A tx leg that fails to prepare is the observed failure mode:
-          // measured 2026-09-15, the cause is ADSP state rot cleared only by
-          // a reboot, not a mixer (SLIMBUS_2_TX was falsified as a cause).
+          // started != 3 -> return), so pcm6p alone cannot tell whether the
+          // path started, and the old check read "voice path open" through
+          // calls with no audible downlink.
+          //
+          // What is measured, without a mechanism: before 2026-09-15 the tx
+          // leg failed pcm_prepare persistently (EINVAL) while the far end
+          // still heard us; after a reboot it has prepared 8/8 calls. Cause
+          // unknown. SLIMBUS_2_TX was tested and falsified as a cause.
           var m = /^state:\s*(\S+)/.exec(data)
           if (m) {
             var legOpen = m[1] === "PREPARED" || m[1] === "RUNNING"

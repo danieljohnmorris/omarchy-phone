@@ -70,14 +70,15 @@ static void q6voiced_open(struct q6voiced *v)
 	v->rx = q6voiced_open_leg(v, PCM_OUT, "rx (downlink)", 5);
 
 	/*
-	 * tx is attempted once and its failure is expected, not retried: on this
-	 * kernel SNDRV_PCM_IOCTL_PREPARE on the VoiceMMode1 capture FE returns
-	 * EINVAL for *any* userspace -- alsa-lib's arecord fails the identical
-	 * ioctl with identical params (traced 2026-09-15) -- because the ADSP
-	 * owns that leg. The uplink is audible to the far end regardless, so
-	 * retrying only spams the journal once per call.
+	 * tx is retried like rx: the kernel only starts the voice path when both
+	 * legs are open (q6voice.c, started != 3), so a tx leg left down is not
+	 * harmless. Measured: before 2026-09-15 PREPARE on the VoiceMMode1
+	 * capture FE returned EINVAL persistently for *any* userspace (alsa-lib
+	 * arecord failed the identical ioctl with identical params, traced), yet
+	 * the far end still heard us; after a reboot it prepares reliably.
+	 * Cause unknown, so retry rather than treat failure as expected.
 	 */
-	v->tx = q6voiced_open_leg(v, PCM_IN, "tx (uplink)", 1);
+	v->tx = q6voiced_open_leg(v, PCM_IN, "tx (uplink)", 5);
 }
 
 static void q6voiced_close(struct q6voiced *v)
