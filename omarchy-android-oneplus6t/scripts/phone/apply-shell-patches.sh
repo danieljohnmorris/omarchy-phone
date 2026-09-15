@@ -521,6 +521,49 @@ assert u, "notification summary line-count anchor not found; upstream Notificati
 s = s[:u.start()] + f"{u.group(1)}maximumLineCount: 3" + s[u.end():]
 open(p,"w").write(s); print("patched notification card")
 PY15
+
+# 16) Sender-side close must take the toast off screen. handleNotification
+# connects `notification.closed` only to drop its liveRefs entry — the popup
+# row is left in popupModel forever. Critical urgency also gets
+# durationFor() == 0 (no expiry by design), so a `notify-send -u critical -t 0`
+# that the sender later withdraws with org.freedesktop.Notifications
+# CloseNotification stays on screen until the shell restarts. That is exactly
+# the stuck "Incoming call" toast: fajita-call-watch posts one per ringing call
+# and withdraws it when the call is answered or gone.
+N=/usr/share/omarchy/shell/plugins/notifications/Service.qml
+sudo cp -n "$N" "$N.orig" 2>/dev/null || true
+sudo python3 - "$N" <<'PY16'
+import re, sys
+p=sys.argv[1]; s=open(p).read()
+if "fajita-notif-close" in s:
+    print("already patched notification close"); sys.exit(0)
+# Indentation-agnostic, and anchored on the whole handler body so a reflow
+# cannot half-match: the delete must stay, the row removal is added after it.
+m = re.search(
+    r'^([ \t]*)notification\.closed\.connect\(function\(\) \{\n'
+    r'[ \t]*if \(service\.liveRefs\[snapshot\.originalId\] === notification\)\n'
+    r'[ \t]*delete service\.liveRefs\[snapshot\.originalId\]\n'
+    r'[ \t]*\}\)$', s, re.M)
+assert m, "notification closed-handler anchor not found; upstream Service.qml changed"
+i = m.group(1)
+new = (f"{i}notification.closed.connect(function() {{ // fajita-notif-close\n"
+       f"{i}  if (service.liveRefs[snapshot.originalId] === notification)\n"
+       f"{i}    delete service.liveRefs[snapshot.originalId]\n"
+       f"{i}  // The sender withdrew it (CloseNotification), so the card must go\n"
+       f"{i}  // too. Match on originalId AND timestamp: a replaces_id reuse of\n"
+       f"{i}  // the id owns a different row, and removing that would kill an\n"
+       f"{i}  // unrelated live alert. removePopup archives the popup file, so\n"
+       f"{i}  // the toast lands in history instead of reappearing on restart.\n"
+       f"{i}  for (var i = service.popupModel.count - 1; i >= 0; i--) {{\n"
+       f"{i}    var row = service.popupModel.get(i)\n"
+       f"{i}    if (!row || row.originalId !== snapshot.originalId) continue\n"
+       f"{i}    if (row.timestamp !== snapshot.timestamp) continue\n"
+       f"{i}    service.removePopup(i, \"expire\")\n"
+       f"{i}  }}\n"
+       f"{i}}})")
+s = s[:m.start()] + new + s[m.end():]
+open(p,"w").write(s); print("patched notification close")
+PY16
 omarchy-restart-shell >/dev/null 2>&1 || true
 # the shell remaps its bar; restart the clock row so it lands beneath it again
 systemctl --user reset-failed waybar.service 2>/dev/null || true
