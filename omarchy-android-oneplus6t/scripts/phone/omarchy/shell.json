@@ -14,11 +14,11 @@
           "id": "omarchy.menu"
         },
         {
-          "id": "omarchy.spacer",
-          "size": 6
+          "id": "omarchy.workspaces"
         },
         {
-          "id": "omarchy.workspaces"
+          "id": "omarchy.spacer",
+          "size": 6
         },
         {
           "id": "fajita.keyboard"
@@ -39,10 +39,10 @@
           "id": "omarchy.network"
         },
         {
-          "id": "omarchy.audio"
+          "id": "omarchy.monitor"
         },
         {
-          "id": "omarchy.monitor"
+          "id": "omarchy.audio"
         }
       ]
     }
