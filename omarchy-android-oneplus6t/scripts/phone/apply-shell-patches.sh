@@ -521,6 +521,29 @@ assert u, "notification summary line-count anchor not found; upstream Notificati
 s = s[:u.start()] + f"{u.group(1)}maximumLineCount: 3" + s[u.end():]
 open(p,"w").write(s); print("patched notification card")
 PY15
+# 17) A no-rows menu must not be able to hold the screen. The PanelWindow
+# maps on `opened` with keyboardFocus Exclusive, but its visible binding —
+# and therefore the tap-to-close handler inside it — also required rowsLoaded.
+# If the menu JSON parse never completes (bad file, guard bash wedged), the
+# layer is an invisible fullscreen input grab: nothing on screen, nothing
+# clickable, no way out but killing the shell. Observed 2026-09-15 as
+# "power button menu stuck, can't click anything".
+sudo python3 - /usr/share/omarchy/shell/plugins/menu/Menu.qml <<'PY17'
+import sys
+p=sys.argv[1]; s=open(p).read()
+if "fajita-menu-norows" in s:
+    print("already patched menu no-rows"); sys.exit(0)
+old = "    visible: root.opened && root.rowsLoaded\n"
+assert s.count(old) == 1, "menu panel visible anchor not found; upstream Menu.qml changed"
+new = ("    visible: root.opened // fajita-menu-norows: never gate the WINDOW on\n"
+       "    // rowsLoaded — a menu whose rows failed to load must still be a\n"
+       "    // dismissable overlay, not an invisible input grab. The card and\n"
+       "    // the empty-state row render on their own; the only thing lost is\n"
+       "    // the pre-load flash, which was the point of the old binding.\n")
+s = s.replace(old, new, 1)
+open(p,"w").write(s); print("patched menu no-rows")
+PY17
+
 
 # 16) Sender-side close must take the toast off screen. handleNotification
 # connects `notification.closed` only to drop its liveRefs entry — the popup
