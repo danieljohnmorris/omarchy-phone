@@ -228,6 +228,13 @@ ssh $PH 'sudo install -m644 -o root -g root /tmp/fajita-backlight-floor.service 
     /etc/systemd/system/fajita-backlight-floor.service
   sudo systemctl daemon-reload; sudo systemctl enable fajita-backlight-floor.service'
 
+# pmOS fajita preset (80-device-oneplus-fajita.preset) disables the ALSA state
+# services: alsactl restoring a saved asound.state at boot races the UCM
+# verbs and can replay stale mixer values over them (pmOS #3320: uplink fine,
+# no/distorted output on later calls). Mask both and drop the saved state.
+ssh $PH 'sudo systemctl mask alsa-restore.service alsa-state.service
+  sudo rm -f /var/lib/alsa/asound.state'
+
 # Call/SMS control from a seatless caller (ssh, systemd --user) needs polkit:
 # without this every mmcli voice/messaging op fails Unauthorized.
 scp -q "$HERE/phone/51-fajita-modem.rules" $PH:/tmp/
