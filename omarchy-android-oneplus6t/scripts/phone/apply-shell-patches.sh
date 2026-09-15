@@ -479,29 +479,114 @@ s = s.replace(old, '    onVisibleChanged: if (!visible) { cardTop = -1; maxRowsH
 open(p, "w").write(s); print("patched menu osk hide")
 PY14
 
-# 15) Notification card width: upstream sizes toasts for a desktop (380 style
-# units). With this theme's spacing scale that exceeds the 540px logical
+# 15) Notification card geometry: upstream sizes toasts for a desktop (380
+# style units). With this theme's spacing scale that exceeds the 540px logical
 # screen, and the popup column anchors right, so the card hangs off the left
 # edge ("SMS from +44…" clipped to "om +44…"). Clamp to the card's own screen
 # minus toast margins; Layout.fillWidth inside reflows the text.
+#
+# The same desktop assumption truncates the text: at 380 units a body fits ~3
+# lines, but at 540px logical the same words need ~3x as many, so anything
+# real (a crash path, a two-sentence SMS) died in an ellipsis. The screen is
+# 1170px tall with one toast on it — give the body room and let the summary
+# use a third line before eliding.
 C=/usr/share/omarchy/shell/plugins/notifications/components/NotificationCard.qml
 sudo cp -n "$C" "$C.orig" 2>/dev/null || true
 sudo python3 - "$C" <<'PY15'
 import re, sys
 p=sys.argv[1]; s=open(p).read()
-if "Screen.width - Style.gapsOut * 2" in s:
+if "fajita-notif-lines" in s:
     print("already patched notification card"); sys.exit(0)
-# Indentation-agnostic: the anchor was observed over ssh grep only, and a
-# missed exact match would abort the whole patcher run half-applied.
-m = re.search(r'^([ \t]*)implicitWidth: Style\.space\(380\)[ \t]*$', s, re.M)
-assert m, "notification card width anchor not found; upstream NotificationCard.qml changed"
-i = m.group(1)
-new = (f"{i}// Phone port: clamp to the screen so the card cannot overflow the panel\n"
-       f"{i}// (upstream's 380 assumes a desktop monitor). Popup margins are gapsOut.\n"
-       f"{i}implicitWidth: Math.min(Style.space(380), Screen.width - Style.gapsOut * 2)")
-s = s[:m.start()] + new + s[m.end():]
+# Width may already be applied from an earlier build of this patcher (the file
+# is only restored from .orig on a shell update), so it is guarded separately
+# from the line counts rather than by the whole-file sentinel above.
+if "Screen.width - Style.gapsOut * 2" not in s:
+    # Indentation-agnostic: the anchor was observed over ssh grep only, and a
+    # missed exact match would abort the whole patcher run half-applied.
+    m = re.search(r'^([ \t]*)implicitWidth: Style\.space\(380\)[ \t]*$', s, re.M)
+    assert m, "notification card width anchor not found; upstream NotificationCard.qml changed"
+    i = m.group(1)
+    new = (f"{i}// Phone port: clamp to the screen so the card cannot overflow the panel\n"
+           f"{i}// (upstream's 380 assumes a desktop monitor). Popup margins are gapsOut.\n"
+           f"{i}implicitWidth: Math.min(Style.space(380), Screen.width - Style.gapsOut * 2)")
+    s = s[:m.start()] + new + s[m.end():]
+# Body then summary: the larger count is the body's (upstream 3 vs 2), and
+# both are matched with their indentation so a future reflow cannot silently
+# retarget one at the other.
+b = re.search(r'^([ \t]*)maximumLineCount: 3[ \t]*$', s, re.M)
+assert b, "notification body line-count anchor not found; upstream NotificationCard.qml changed"
+s = s[:b.start()] + f"{b.group(1)}maximumLineCount: 10 // fajita-notif-lines: 540px logical needs ~3x a desktop's lines" + s[b.end():]
+u = re.search(r'^([ \t]*)maximumLineCount: 2[ \t]*$', s, re.M)
+assert u, "notification summary line-count anchor not found; upstream NotificationCard.qml changed"
+s = s[:u.start()] + f"{u.group(1)}maximumLineCount: 3" + s[u.end():]
 open(p,"w").write(s); print("patched notification card")
 PY15
+# 17) A no-rows menu must not be able to hold the screen. The PanelWindow
+# maps on `opened` with keyboardFocus Exclusive, but its visible binding —
+# and therefore the tap-to-close handler inside it — also required rowsLoaded.
+# If the menu JSON parse never completes (bad file, guard bash wedged), the
+# layer is an invisible fullscreen input grab: nothing on screen, nothing
+# clickable, no way out but killing the shell. Observed 2026-09-15 as
+# "power button menu stuck, can't click anything".
+sudo python3 - /usr/share/omarchy/shell/plugins/menu/Menu.qml <<'PY17'
+import sys
+p=sys.argv[1]; s=open(p).read()
+if "fajita-menu-norows" in s:
+    print("already patched menu no-rows"); sys.exit(0)
+old = "    visible: root.opened && root.rowsLoaded\n"
+assert s.count(old) == 1, "menu panel visible anchor not found; upstream Menu.qml changed"
+new = ("    visible: root.opened // fajita-menu-norows: never gate the WINDOW on\n"
+       "    // rowsLoaded — a menu whose rows failed to load must still be a\n"
+       "    // dismissable overlay, not an invisible input grab. The card and\n"
+       "    // the empty-state row render on their own; the only thing lost is\n"
+       "    // the pre-load flash, which was the point of the old binding.\n")
+s = s.replace(old, new, 1)
+open(p,"w").write(s); print("patched menu no-rows")
+PY17
+
+
+# 16) Sender-side close must take the toast off screen. handleNotification
+# connects `notification.closed` only to drop its liveRefs entry — the popup
+# row is left in popupModel forever. Critical urgency also gets
+# durationFor() == 0 (no expiry by design), so a `notify-send -u critical -t 0`
+# that the sender later withdraws with org.freedesktop.Notifications
+# CloseNotification stays on screen until the shell restarts. That is exactly
+# the stuck "Incoming call" toast: fajita-call-watch posts one per ringing call
+# and withdraws it when the call is answered or gone.
+N=/usr/share/omarchy/shell/plugins/notifications/Service.qml
+sudo cp -n "$N" "$N.orig" 2>/dev/null || true
+sudo python3 - "$N" <<'PY16'
+import re, sys
+p=sys.argv[1]; s=open(p).read()
+if "fajita-notif-close" in s:
+    print("already patched notification close"); sys.exit(0)
+# Indentation-agnostic, and anchored on the whole handler body so a reflow
+# cannot half-match: the delete must stay, the row removal is added after it.
+m = re.search(
+    r'^([ \t]*)notification\.closed\.connect\(function\(\) \{\n'
+    r'[ \t]*if \(service\.liveRefs\[snapshot\.originalId\] === notification\)\n'
+    r'[ \t]*delete service\.liveRefs\[snapshot\.originalId\]\n'
+    r'[ \t]*\}\)$', s, re.M)
+assert m, "notification closed-handler anchor not found; upstream Service.qml changed"
+i = m.group(1)
+new = (f"{i}notification.closed.connect(function() {{ // fajita-notif-close\n"
+       f"{i}  if (service.liveRefs[snapshot.originalId] === notification)\n"
+       f"{i}    delete service.liveRefs[snapshot.originalId]\n"
+       f"{i}  // The sender withdrew it (CloseNotification), so the card must go\n"
+       f"{i}  // too. Match on originalId AND timestamp: a replaces_id reuse of\n"
+       f"{i}  // the id owns a different row, and removing that would kill an\n"
+       f"{i}  // unrelated live alert. removePopup archives the popup file, so\n"
+       f"{i}  // the toast lands in history instead of reappearing on restart.\n"
+       f"{i}  for (var i = service.popupModel.count - 1; i >= 0; i--) {{\n"
+       f"{i}    var row = service.popupModel.get(i)\n"
+       f"{i}    if (!row || row.originalId !== snapshot.originalId) continue\n"
+       f"{i}    if (row.timestamp !== snapshot.timestamp) continue\n"
+       f"{i}    service.removePopup(i, \"expire\")\n"
+       f"{i}  }}\n"
+       f"{i}}})")
+s = s[:m.start()] + new + s[m.end():]
+open(p,"w").write(s); print("patched notification close")
+PY16
 omarchy-restart-shell >/dev/null 2>&1 || true
 # the shell remaps its bar; restart the clock row so it lands beneath it again
 systemctl --user reset-failed waybar.service 2>/dev/null || true

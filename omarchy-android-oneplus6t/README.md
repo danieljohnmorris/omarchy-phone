@@ -727,7 +727,12 @@ under the notch.
 
 ## Rebuild from scratch
 
-1. Docker Desktop up. `docker run -d --name fajita-build --privileged --platform linux/arm64 -v $PWD/work:/work ubuntu:24.04 sleep infinity`, apt install e2fsprogs cpio arch-install-scripts android-sdk-libsparse-utils build-essential git zstd systemd-container, build osm0sis/mkbootimg with `CFLAGS="-O2 -w"`.
+1. Docker Desktop up. `build-rootfs.sh` reads `/work/scripts/` and
+   `/work/config.env` as well as `/work/`, so mount all three:
+   `docker run -d --name fajita-build --privileged --platform linux/arm64 -v $PWD/work:/work -v $PWD/scripts:/work/scripts -v $PWD/config.env:/work/config.env ubuntu:24.04 sleep infinity`,
+   apt install e2fsprogs cpio arch-install-scripts android-sdk-libsparse-utils build-essential git zstd systemd-container, build osm0sis/mkbootimg with `CFLAGS="-O2 -w"`.
+   `ROOTFS_SIZE` must be resolvable after `config.env` is sourced (it is, as
+   of 2026-09-15); pass `docker exec -e ROOTFS_SIZE=16G` to override.
 2. Download `ArchLinuxARM-aarch64-latest.tar.gz` and the pmOS v25.12 apks
    (`linux-postmarketos-qcom-sdm845`, `firmware-oneplus-sdm845`, `device-oneplus-fajita`) into `work/`, extract apks under `work/pmos/x/`.
 3. `docker exec fajita-build bash /work/scripts/build-rootfs.sh`

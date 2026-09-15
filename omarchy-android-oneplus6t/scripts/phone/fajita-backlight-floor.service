@@ -1,0 +1,24 @@
+[Unit]
+# systemd-backlight restores whatever brightness was set at shutdown. The panel
+# accepts 0..1023 and anything under ~5% is indistinguishable from a dead
+# phone: after a shutdown with the screen dimmed (or dimmed by the idle timer)
+# the next boot shows the Linux splash and then "black screen", with Hyprland
+# actually running and rendering normally behind it. There is no on-screen way
+# out, because you cannot find the brightness control on a screen you cannot
+# see. Clamp the restored value to a floor instead of masking the restore, so
+# a deliberate dim survives a reboot but an invisible one cannot.
+Description=Raise a too-dark restored backlight to a usable floor
+After=systemd-backlight@backlight:ae94000.dsi.0.service
+Wants=systemd-backlight@backlight:ae94000.dsi.0.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=no
+ExecStart=/bin/sh -c 'b=/sys/class/backlight/ae94000.dsi.0; \
+  [ -w "$b/brightness" ] || exit 0; \
+  cur=$(cat "$b/brightness"); max=$(cat "$b/max_brightness"); \
+  floor=$((max / 5)); \
+  [ "$cur" -ge "$floor" ] || echo "$floor" > "$b/brightness"'
+
+[Install]
+WantedBy=multi-user.target

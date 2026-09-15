@@ -6,8 +6,15 @@
 # mixer work — no profile flip, no host PCM. Codec-side muxes mirror the UCM
 # verbs' Earpiece/Headphones SectionDevices (sdm845-mainline alsa-ucm-conf);
 # every control name below is verified against `amixer -c0 controls` on the
-# device (2026-09-14). The TFA speaker amp has no kcontrols; it powers with
-# the QUAT_MI2S link.
+# device (2026-09-14).
+#
+# No speaker arm. The loudspeaker sits behind the TFA amp on QUAT_MI2S, and
+# enabling "QUAT_MI2S_RX Voice Mixer VoiceMMode1" gives the hostless voice FE
+# a backend it cannot be configured against (the Voice Call UCM verb wires
+# only SLIMBUS_0_RX / SLIMBUS_1_RX): q6voiced's rx open then fails EINVAL and
+# the call runs with pcm6p closed — no downlink audio at all, persisting into
+# later calls via the state file below. Measured on device: earpiece/headset
+# -> pcm6p PREPARED; speaker, or speaker+earpiece together -> pcm6p closed.
 #
 # Enable-before-disable and every cset is non-fatal: a control that vanishes
 # on a future kernel warns instead of aborting mid-case, so a partial apply
@@ -16,7 +23,7 @@
 # The chosen route is recorded in ~/.local/state/fajita/call-route and
 # re-applied by fajita-call-watch after each profile flip to Voice Call: the
 # verb's EnableSequence forces the earpiece muxes and would otherwise revert
-# a mid-call speaker/headset selection without touching the mixers query shows.
+# a mid-call headset selection without touching the mixers query shows.
 #
 #   fajita-call-route earpiece|speaker|headset   switch live-call output
 #   fajita-call-route mic off|on                 mute / unmute your uplink
@@ -27,6 +34,16 @@ set -uo pipefail
 STATE="$HOME/.local/state/fajita/call-route"
 MIC="$HOME/.local/state/fajita/call-mic"
 mkdir -p "$(dirname "$STATE")"
+# The speaker leg is order-sensitive (measured 2026-09-14): enabling
+# "QUAT_MI2S_RX Voice Mixer VoiceMMode1" *before* q6voiced opens the voice rx
+# makes that open fail ("Failed to open rx: Invalid argument", pcm6p stays
+# closed) and the call has no downlink at all. Enabling it on an already-open
+# FE is harmless — the session simply moves to the QUAT backend and releases
+# SLIMBUS_0_RX. So the speaker arm requires an open FE and otherwise falls
+# back to the earpiece rather than deafening the call. Callers that re-apply a
+# saved route at call setup (fajita-call-watch) hit exactly the bad ordering,
+# which is why this route looked permanently broken.
+fe_open() { grep -q '^state' /proc/asound/card0/pcm6p/sub0/status 2>/dev/null; }
 vx()  { amixer -c0 -q cset name="'$1 Voice Mixer VoiceMMode1'" "$2" 2>/dev/null \
           || echo "warn: voice mixer '$1'" >&2; }
 cap() { amixer -c0 -q cset name="'VoiceMMode1 Capture Mixer $1'" "$2" 2>/dev/null \
@@ -34,12 +51,52 @@ cap() { amixer -c0 -q cset name="'VoiceMMode1 Capture Mixer $1'" "$2" 2>/dev/nul
 cx()  { amixer -c0 -q cset name="$1" "$2" 2>/dev/null \
           || echo "warn: control '$1'" >&2; }
 
-# Route arms re-enable their capture mixer, so a route switch mid-mute would
-# silently unmute the uplink while the UI still shows muted. Every arm ends
-# with this: re-gate the capture mixers when the mic is muted.
+# Mic gating is a DIGITAL GAIN on the capture decimators, never an AFE capture
+# mixer or a codec mux. Measured 2026-09-14 mid-call, per mute/unmute cycle:
+#   VoiceMMode1 Capture Mixer SLIMBUS_0_TX off/on -> "Port Closed TX port 7"
+#     and no re-open: the ADSP voice TX is dead for the rest of the call, so
+#     the far end hears nothing after one mute or route switch (the bug).
+#   ADC MUX7 ZERO/AMIC -> occasional "underflow error on TX port 7".
+#   DEC7 Volume 0/84   -> no kernel events at all.
+# The decimator volumes advertise mute=1 with min = -84 dB, so 0 is true
+# silence; DEC7 is also what the level meter reads, so a muted graph reads 0.
+#
+# Both decimators are gated, not just the active one: DEC7 carries the bottom
+# mic (earpiece/speaker routes, SLIMBUS_0_TX) and DEC0 the headset mic
+# (SLIMBUS_2_TX). Gating only DEC7 left a headset call unmutable, and a route
+# switch while muted would otherwise hand the far end a live mic.
+MIC_GAIN=84
+mic_gate() { # on|off
+  if [ "$1" = off ]; then cx 'DEC7 Volume' 0; cx 'DEC0 Volume' 0
+  else cx 'DEC7 Volume' "$MIC_GAIN"; cx 'DEC0 Volume' "$MIC_GAIN"; fi
+}
+# Route arms must not silently unmute: re-apply the gate after each switch.
 reassert_mute() {
-  [ -f "$MIC" ] && { cap SLIMBUS_0_TX off; cap SLIMBUS_2_TX off; }
+  [ -f "$MIC" ] && mic_gate off
   return 0
+}
+# Bottom-mic codec chain (ADC4 -> AMIC MUX7 -> ADC MUX7 -> DEC7), asserted by
+# the earpiece/speaker arms. Nothing in a normal call zeroes it (verified
+# across call start, hangup and both profile flips), but an external cset --
+# the UCM Mic DisableSequence, or a debugging session -- leaves the decimator
+# sourceless while DEC7 still reads 84, i.e. "unmuted" with a dead mic. Only
+# written when wrong: a redundant mux write can cost a TX7 underflow.
+mic_chain() {
+  cxq 'AMIC MUX7' ADC4 4
+  cxq 'ADC MUX7'  AMIC 1
+}
+# cset only when the read-back differs. $3 is the numeric form of $2, which is
+# what cget prints for an enum.
+cxq() { # control value numeric
+  [ "$(amixer -c0 cget name="'$1'" 2>/dev/null |
+        sed -n 's/.*: values=//p')" = "$3" ] || cx "$1" "$2"
+}
+# Only write an AFE capture mixer when the value actually changes: an
+# off->on->off churn tears TX port 7 down (see above), and the arms re-assert
+# these on every switch.
+capq() { # port value
+  [ "$(amixer -c0 cget name="'VoiceMMode1 Capture Mixer $1'" 2>/dev/null |
+        sed -n 's/.*: values=//p')" = "$2" ] || cap "$1" "$2"
 }
 
 # Headset codec-path teardown, mirroring the Headphones SectionDevice's
@@ -51,6 +108,17 @@ hp_off() {
   cx 'CDC_IF TX0 MUX' ZERO; cx 'ADC MUX0' ZERO; cx 'AMIC MUX0' ZERO
 }
 
+# Loudspeaker amp (tfa9894, i2c 4-0034) DSP profile. The amp exposes
+# 'mono Profile' with MUSIC_48000 / VOICE_48000 / MMITest_48000; it sits at
+# MUSIC_48000 permanently because nothing selected otherwise, so a speakerphone
+# call ran call audio through the music tuning. VOICE_48000 is the vendor
+# profile for narrowband voice. Non-fatal: on a kernel without the amp the
+# control is absent and cx warns.
+amp_profile() { # MUSIC_48000|VOICE_48000
+  [ -n "$(amixer -c0 cget name="'mono Profile'" 2>/dev/null)" ] || return 0
+  cx 'mono Profile' "$1"
+}
+
 case "${1:-query}" in
   earpiece)
     vx  SLIMBUS_0_RX on
@@ -58,14 +126,25 @@ case "${1:-query}" in
     cx 'RX INT0 DEM MUX' CLSH_DSM_OUT
     cx 'RX INT0_1 MIX1 INP0' RX0
     vx  SLIMBUS_1_RX off; vx QUAT_MI2S_RX off; hp_off
-    cap SLIMBUS_0_TX on;  cap SLIMBUS_2_TX off
+    amp_profile MUSIC_48000
+    capq SLIMBUS_0_TX on;  capq SLIMBUS_2_TX off
+    mic_chain
     reassert_mute
     ;;
   speaker)
+    if ! fe_open; then
+      # Apply earpiece for audio now, but keep the recorded pick: the FE opens
+      # a moment later and the next re-apply (or the UI) lands speaker for
+      # real. Overwriting STATE here would silently demote the choice forever.
+      echo "warn: voice FE not open yet; earpiece until it is" >&2
+      FAJITA_ROUTE_NO_SAVE=1 exec "$0" earpiece
+    fi
     vx  QUAT_MI2S_RX on
+    amp_profile VOICE_48000
     vx  SLIMBUS_0_RX off; vx SLIMBUS_1_RX off; hp_off
     cx 'RX INT0_1 MIX1 INP0' ZERO
-    cap SLIMBUS_0_TX on;  cap SLIMBUS_2_TX off
+    capq SLIMBUS_0_TX on;  capq SLIMBUS_2_TX off
+    mic_chain
     reassert_mute
     ;;
   headset)
@@ -74,29 +153,33 @@ case "${1:-query}" in
     cx 'RX INT1 DEM MUX' CLSH_DSM_OUT; cx 'RX INT2 DEM MUX' CLSH_DSM_OUT
     cx 'RX INT1_1 MIX1 INP0' RX2; cx 'RX INT2_1 MIX1 INP0' RX3
     cx 'COMP1 Switch' 1; cx 'COMP2 Switch' 1
-    cap SLIMBUS_2_TX on
+    capq SLIMBUS_2_TX on
     cx 'AIF3_CAP Mixer SLIM TX0' 1
     cx 'CDC_IF TX0 MUX' DEC0; cx 'ADC MUX0' AMIC; cx 'AMIC MUX0' ADC2
     vx  SLIMBUS_0_RX off; vx QUAT_MI2S_RX off
+    amp_profile MUSIC_48000
     cx 'RX INT0_1 MIX1 INP0' ZERO
-    cap SLIMBUS_0_TX off
+    capq SLIMBUS_0_TX off
     reassert_mute
     ;;
   mic)
-    # Mute = gate the hostless uplink into the modem at the AFE capture
-    # mixers (every one the routes use). Unmute = re-assert the recorded
-    # route, which re-enables exactly the capture mixer it needs. Recorded
-    # so fajita-call-watch can re-apply it after a profile flip.
+    # Mute = zero the codec mic mux (see mic_gate). Never the AFE capture
+    # mixer: that closes TX port 7 for good mid-call. Recorded in $MIC so a
+    # route switch or profile flip can re-assert it.
     case "$2" in
-      off) cap SLIMBUS_0_TX off; cap SLIMBUS_2_TX off; echo off > "$MIC";;
-      on)  rm -f "$MIC"
-           exec "$0" "$(cat "$STATE" 2>/dev/null || echo earpiece)";;
+      off) mic_gate off; echo off > "$MIC";;
+      on)  rm -f "$MIC"; mic_gate on;;
       *) echo "usage: $0 mic off|on" >&2; exit 2;;
     esac
     exit 0
     ;;
   mic-query)
-    [ -f "$MIC" ] && echo off || echo on
+    # Kernel truth, not the state file: an external cset (or a stale file)
+    # would otherwise make the UI label disagree with the hardware. DEC7 alone
+    # answers for every route because mic_gate always moves DEC7 and DEC0
+    # together, so they cannot disagree.
+    [ "$(amixer -c0 cget name="'DEC7 Volume'" 2>/dev/null |
+          sed -n 's/.*: values=//p')" = 0 ] && echo off || echo on
     exit 0
     ;;
    query)
@@ -109,9 +192,12 @@ case "${1:-query}" in
     echo none
     ;;
   *)
-    sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//' >&2
+    sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//' >&2
     exit 2
     ;;
 esac
 
-case "${1:-}" in earpiece|speaker|headset) echo "$1" > "$STATE";; esac
+case "${1:-}" in
+  earpiece|speaker|headset)
+    [ -n "${FAJITA_ROUTE_NO_SAVE:-}" ] || echo "$1" > "$STATE";;
+esac

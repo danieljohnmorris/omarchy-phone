@@ -1,5 +1,5 @@
 #!/bin/bash
-# Mic level meter for a live call: prints one 0-100 value per 0.5s on stdout,
+# Mic level meter for a live call: prints one 0-100 value per 0.1s on stdout,
 # consumed by calls.qml's opt-in level strip. dB-scaled: 0 = -60 dBFS or
 # quieter, 100 = full scale — linear RMS saturates (speech runs in the
 # thousands on this mic, so min(100, rms/3) pegged every bar at max).
@@ -17,8 +17,16 @@
 set -uo pipefail
 exec 2>/dev/null
 exec python3 -u -c '
-import math, signal, struct, subprocess, sys
+import math, os, select, signal, struct, subprocess, sys, time
 
+# Self-heal: a SIGKILLed parent (QProcess stop) orphans the capture child
+# holding hw:0,1, and every later start then fails EBUSY with no visible error
+# — the meter silently never comes back. The only legit holder is this script,
+# so reap any stale one first. Match on the process name, not the command line:
+# this source text IS our own /proc cmdline, so any -f pattern describing the
+# capture command also matches this python and SIGTERMs it before the handler
+# is installed (the meter then printed nothing at all).
+subprocess.run(["pkill", "-x", "arecord"], stderr=subprocess.DEVNULL)
 arecord = subprocess.Popen(
     ["arecord", "-D", "hw:0,1", "-f", "S16_LE", "-r", "16000", "-c", "1"],
     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
@@ -29,17 +37,37 @@ def cleanup(_sig=None, _frm=None):
 
 signal.signal(signal.SIGTERM, cleanup)
 signal.signal(signal.SIGINT, cleanup)
+# Tick on the wall clock, not on byte count: this capture stalls mid-call
+# (hw:0,1 delivers a fraction of a second then starves while the voice FE owns
+# SLIM TX7), so a blocking read(16000) never completes and the meter printed
+# nothing at all. Emit every 0.1s from whatever arrived — a starved capture
+# then reads as a flat zero line instead of a blank, never-updating graph.
+# 0.1s (1600 frames) is the graph sample rate: at 0.5s speech rendered as a
+# visibly jumpy staircase, and the RMS window is short enough to track
+# syllables rather than averaging them flat. No apostrophes below this line:
+# the whole body is a single-quoted python3 -c argument.
+os.set_blocking(arecord.stdout.fileno(), False)
 try:
-    while True:
-        b = arecord.stdout.read(16000)  # 0.5s: 16 kHz mono S16
-        if not b:
-            break
-        n = len(b) // 2
-        if n == 0:
+    buf = b""
+    next_tick = time.monotonic() + 0.1
+    while arecord.poll() is None:
+        timeout = max(0.0, next_tick - time.monotonic())
+        if select.select([arecord.stdout], [], [], timeout)[0]:
+            chunk = arecord.stdout.read(65536)
+            if chunk:
+                buf += chunk
+        if time.monotonic() < next_tick:
             continue
-        v = [x if x < 32768 else x - 65536
-             for x in struct.unpack("<%dh" % n, b[:n * 2])]
-        rms = (sum(x * x for x in v) / n) ** 0.5
+        # Never chase a backlog: after a stall (scheduler, starved capture) a
+        # bare += leaves several ticks past due and the loop spins at timeout 0,
+        # emitting a burst of samples that reads as a spike on the graph.
+        next_tick = max(next_tick + 0.1, time.monotonic())
+        n = len(buf) // 2
+        rms = 0.0
+        if n:
+            v = struct.unpack("<%dh" % n, buf[:n * 2])
+            rms = (sum(x * x for x in v) / n) ** 0.5
+        buf = b""
         if rms <= 0:
             print(0)
         else:

@@ -20,6 +20,20 @@ set -uo pipefail
 export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
 CARD="alsa_card.platform-sound"
 declare -A notified   # call/SMS path -> 1, so one notify per object
+# Notification ids for ring toasts, so they can be withdrawn. The ring toast is
+# -t 0 (never expires) on purpose: a missed call must stay on screen. Nothing
+# else ever closes it, so without this it outlived the call forever.
+declare -A nid
+# Withdraw a ring toast. notify-send has no close verb, so talk to the spec's
+# CloseNotification directly; a stale id is a no-op, not an error.
+notif_close() { # $1 = call path
+  local id=${nid[$1]:-}
+  [ -n "$id" ] || return 0
+  unset "nid[$1]"
+  gdbus call --session -d org.freedesktop.Notifications \
+    -o /org/freedesktop/Notifications \
+    -m org.freedesktop.Notifications.CloseNotification "$id" >/dev/null 2>&1 || true
+}
 CALLLOG="$HOME/.local/state/fajita/calls.jsonl"
 ACTIVE="$HOME/.local/state/fajita/call-active"
 # Per-call bookkeeping for the log line written when the object vanishes:
@@ -76,8 +90,33 @@ reconcile() {
     # The Voice Call verb's EnableSequence forces the earpiece muxes, which
     # would silently revert a mid-call speaker/headset pick. Re-assert the
     # user's route (fajita-call-route records it) right after the flip.
+    #
+    # Wait for the voice FE first: enabling the speaker's QUAT_MI2S_RX voice
+    # mixer before q6voiced opens rx makes that open fail and the call has no
+    # downlink at all. This flip runs at call setup, i.e. exactly that window,
+    # so re-applying eagerly is what made "speaker" look permanently broken.
+    # Detached: reconcile still owes the ringing UI a raise and SMS handling
+    # below, so a synchronous wait here would delay the incoming-call window by
+    # up to 3s. The profile flip above stays synchronous; only the re-apply
+    # (which must land *after* the FE opens) runs in the background.
     if [ "$want" = "Voice Call" ] && [ -r "$HOME/.local/state/fajita/call-route" ]; then
-      fajita-call-route "$(cat "$HOME/.local/state/fajita/call-route")" >/dev/null 2>&1 || true
+      (
+        for _ in 1 2 3 4 5 6 7 8 9 10; do
+          s=$(pcm_state pcm6p)
+          [ -n "$s" ] && [ "$s" != closed ] && break
+          sleep 0.3
+        done
+        fajita-call-route "$(cat "$HOME/.local/state/fajita/call-route")" >/dev/null 2>&1 || true
+      ) &
+    fi
+    # Teardown: park the voice RX port back on earpiece. The AFE mixers outlive
+    # the call, so a speaker pick left QUAT_MI2S_RX enabled and the *next* call
+    # then began dialing with it already on — the fatal ordering above, killing
+    # rx for that whole call (observed 2026-09-14 23:16: pcm6p closed, four
+    # "Failed to open rx"). NO_SAVE keeps the user's recorded pick, so the
+    # re-apply above still restores speaker once the FE is open.
+    if [ "$want" = "HiFi" ]; then
+      FAJITA_ROUTE_NO_SAVE=1 fajita-call-route earpiece >/dev/null 2>&1 || true
     fi
     # Log the flip and the q6voice FE state with it: the only open question on
     # call audio is what pcm6{p,c} do during a *connected* call, and an
@@ -104,8 +143,16 @@ reconcile() {
         raise calls
         if [ -z "${notified[$path]:-}" ]; then
           notified[$path]=1
-          notify-send -u critical -t 0 "Incoming call" "${number:-unknown}" >/dev/null 2>&1 || true
+          # -p prints the id so the toast can be withdrawn once the call is
+          # answered or gone; -t 0 keeps a *missed* call on screen.
+          nid[$path]=$(notify-send -p -u critical -t 0 \
+            "Incoming call" "${number:-unknown}" 2>/dev/null) || true
         fi
+        ;;
+      *)
+        # Left the ringing states: answered, or moved to held/waiting. The
+        # ring toast has done its job and must not sit over the live call.
+        notif_close "$path"
         ;;
     esac
   done <<< "$calls"
@@ -141,6 +188,14 @@ reconcile() {
       --argjson answered "$answered" --argjson dur "$dur" \
       '{ts:$ts,dir:$dir,number:$number,answered:$answered,dur:$dur}' \
       >> "$CALLLOG" 2>/dev/null || true
+    # The object is gone, so the ring toast can never be answered: withdraw it
+    # unconditionally. An unanswered incoming call still deserves a trace, but
+    # as a notice that expires -- the old -t 0 toast had no owner once the call
+    # ended and sat on screen until the shell restarted.
+    notif_close "$p"
+    if [ "$answered" = false ] && [ "${c_dir[$p]:-}" = incoming ]; then
+      notify-send -t 20000 "Missed call" "${c_num[$p]:-unknown}" >/dev/null 2>&1 || true
+    fi
     unset "c_t0[$p]" "c_dir[$p]" "c_num[$p]" "c_ans[$p]"
     unset "notified[$p]"
   done

@@ -195,8 +195,7 @@ echo "== voice calls + SMS: q6voiced (call audio), helpers, apps, watcher"
 # in a debian:bookworm arm64 container. Committed under phone/ so a setup run
 # needs no Docker, same as the screensaver binary.
 if [ ! -x "$HERE/phone/q6voiced" ]; then
-  "$HERE/build-q6voiced.sh"
-  install -m755 "$HERE/../build/q6voiced/q6voiced" "$HERE/phone/q6voiced"
+  "$HERE/build-q6voiced.sh" # also syncs phone/q6voiced from build output
 fi
 scp -q "$HERE/phone/q6voiced" "$HERE/phone/q6voiced.service" $PH:/tmp/
 ssh $PH 'sudo install -m755 -o root -g root /tmp/q6voiced /usr/local/bin/q6voiced
@@ -218,6 +217,22 @@ ssh $PH 'sudo install -m755 -o root -g root /tmp/81voltd /usr/local/bin/81voltd
   sudo install -m755 -o root -g root /tmp/fajita-ims-wait /usr/local/bin/fajita-ims-wait
   sudo install -m644 -o root -g root /tmp/81voltd.service /etc/systemd/system/81voltd.service
   sudo systemctl daemon-reload; sudo systemctl enable --now 81voltd.service'
+
+# systemd-backlight restores the shutdown brightness verbatim, so a phone put
+# down dim boots to what looks like a dead screen (splash, then black, with
+# Hyprland running fine behind it) and there is no way to find the brightness
+# control on an invisible screen. This clamps the restored value to 20%.
+scp -q "$HERE/phone/fajita-backlight-floor.service" $PH:/tmp/
+ssh $PH 'sudo install -m644 -o root -g root /tmp/fajita-backlight-floor.service \
+    /etc/systemd/system/fajita-backlight-floor.service
+  sudo systemctl daemon-reload; sudo systemctl enable fajita-backlight-floor.service'
+
+# pmOS fajita preset (80-device-oneplus-fajita.preset) disables the ALSA state
+# services: alsactl restoring a saved asound.state at boot races the UCM
+# verbs and can replay stale mixer values over them (pmOS #3320: uplink fine,
+# no/distorted output on later calls). Mask both and drop the saved state.
+ssh $PH 'sudo systemctl mask alsa-restore.service alsa-state.service
+  sudo rm -f /var/lib/alsa/asound.state'
 
 # Call/SMS control from a seatless caller (ssh, systemd --user) needs polkit:
 # without this every mmcli voice/messaging op fails Unauthorized.

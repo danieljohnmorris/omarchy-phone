@@ -333,8 +333,10 @@ ShellRoot {
     title: "messages"
     color: root.cBg
     visible: root.open
-    implicitWidth: 540
-    implicitHeight: 1080
+    // Logical screen pixels, not a literal — see calls.qml: the old 540x1080
+    // understated the real 540x1170 and had to be hand-edited per device.
+    implicitWidth: Screen.width
+    implicitHeight: Screen.height
 
     Rectangle {
       id: card

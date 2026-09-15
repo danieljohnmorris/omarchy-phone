@@ -27,12 +27,17 @@ ShellRoot {
   property double now: 0          // bumped per second; re-evaluates duration bindings
   property string tab: "recents"  // idle view: "recents" | "keypad"
   property var log: []            // call log [{ts,dir,number,answered,dur}] oldest first
-  property string callRoute: "earpiece" // live-call output: earpiece|speaker|headset
+  property string callRoute: "earpiece" // live-call output: earpiece|headset
   property bool levelOn: true // mic strip on by default (asked-for feature); tap "level" to disable for a capture-free call
   property bool micMuted: false // uplink gated at the AFE capture mixers; seeded from kernel truth
   property var micHist: []    // "you": mic RMS 0..100 (dB-scaled), newest last
   property var sessHist: []   // "them": 1 = voice FE RUNNING (network sending media), 0.08 = silent
-  readonly property int graphPoints: 60
+  // Points per canvas width. Each series samples at its own rate, so the
+  // spans differ: the mic meter ticks 10x/s (100 pts ~= 10s of history, fine
+  // enough that speech reads as a waveform, not a staircase), the voice-FE
+  // series once per rescan (60 pts = 60s).
+  readonly property int micPoints: 100
+  readonly property int sessPoints: 60
   property string lastError: ""
 
   // Pre-load fallbacks only; every colour below is replaced from the active
@@ -85,9 +90,24 @@ ShellRoot {
   }
   Component.onCompleted: root.toggle() // first spawn: show + rescan immediately
 
-  function run(cmd) { // fire-and-forget; errors surface via lastError
+  // Fire-and-forget runner. Process refuses a command change while running,
+  // so overlapping actions (fast mute -> unmute, route re-taps) must queue or
+  // the later one is silently dropped. Errors surface via lastError.
+  property var cmdQueue: []
+  function run(cmd) {
     root.lastError = ""
-    proc.command = ["bash", "-lc", cmd]
+    root.cmdQueue = root.cmdQueue.concat([cmd])
+    root.drainQueue() // no-op while busy; onExited drains the rest in order
+  }
+  // Drain one queued command. Called via Qt.callLater from onExited so the
+  // Process has actually gone idle: assigning running=true while it is still
+  // true is a no-op, so a drain that lands early must leave the queue intact
+  // and let the next run()/exit retry it rather than dropping the command.
+  function drainQueue() {
+    if (proc.running || root.cmdQueue.length === 0) return
+    var next = root.cmdQueue[0]
+    root.cmdQueue = root.cmdQueue.slice(1)
+    proc.command = ["bash", "-lc", next]
     proc.running = true
   }
 
@@ -99,17 +119,24 @@ ShellRoot {
     root.run("fajita-call-route " + r)
   }
 
+  // Uplink gate. Optimistic label flip, then the command; proc.onExited
+  // re-queries the mixer so the label ends on kernel truth either way.
+  function setMic(muted) {
+    root.micMuted = muted
+    root.run("fajita-call-route mic " + (muted ? "off" : "on"))
+  }
+
   // Panel-style history painter (same shape as fajita.cellular Panel.qml):
   // baseline plus a right-aligned line, one series per canvas.
-  function paintSeries(cv, data, fixedPeak, color) {
+  function paintSeries(cv, data, fixedPeak, color, span) {
     var ctx = cv.getContext("2d")
     ctx.clearRect(0, 0, cv.width, cv.height)
     ctx.strokeStyle = String(root.cMuted)
     ctx.globalAlpha = 0.35
     ctx.lineWidth = 1
     ctx.beginPath()
-    ctx.moveTo(0, cv.height - 0.5)
-    ctx.lineTo(cv.width, cv.height - 0.5)
+    ctx.moveTo(0, cv.height - 1.5) // inset: a 1px stroke on height-0.5 clips
+    ctx.lineTo(cv.width, cv.height - 1.5)
     ctx.stroke()
     ctx.globalAlpha = 1
     if (data.length < 2) return
@@ -117,7 +144,7 @@ ShellRoot {
     ctx.lineWidth = 1.5
     ctx.beginPath()
     for (var j = 0; j < data.length; j++) {
-      var x = cv.width - (data.length - 1 - j) * (cv.width / (root.graphPoints - 1))
+      var x = cv.width - (data.length - 1 - j) * (cv.width / (span - 1))
       var y = cv.height - 2 - (data[j] / fixedPeak) * (cv.height - 6)
       if (j === 0) ctx.moveTo(x, y)
       else ctx.lineTo(x, y)
@@ -164,6 +191,11 @@ ShellRoot {
     // resolved colors.toml inode, which theme-set replaces, so a live window
     // repaints via IPC rather than waiting for the file watcher that never fires.
     function retint(): void { colors.reload() }
+    // Mic gate from outside the UI (keybind/CLI), so the button label and the
+    // kernel gate cannot diverge: "on"/"off" mirror fajita-call-route mic.
+    function mic(state: string): void {
+      root.setMic(state === "off" || state === "mute" || state === "muted")
+    }
   }
 
   // Common runner for actions (start/accept/hangup).
@@ -175,7 +207,11 @@ ShellRoot {
     stderr: SplitParser {
       onRead: data => { if (data.trim()) root.lastError = data.trim() }
     }
-    onExited: rescan.running = true // reflect the new call state immediately
+    onExited: {
+      rescan.running = true // reflect the new call state immediately
+      if (root.cmdQueue.length > 0) Qt.callLater(root.drainQueue) // running flips after this signal
+      else micQuery.running = true // last action settled: label follows the mixer
+    }
   }
 
   // Long-press dial paste: pull a dialable string off the clipboard. The
@@ -202,25 +238,48 @@ ShellRoot {
   Process {
     id: rescan
     running: false
-    command: ["bash", "-lc",
+    // Plain -c, not -lc: this runs every second, and a login shell sources
+    // .bash_profile/.bashrc on each tick for nothing but PATH. Set PATH here
+    // instead (bash expands $HOME) and skip the profile work.
+    command: ["bash", "-c",
+      "export PATH=\"$HOME/.local/bin:$PATH\"; " +
       "fajita-call list; echo __ACTIVE__; cat ~/.local/state/fajita/call-active 2>/dev/null; " +
-      "echo __FE__; grep -m1 '^state' /proc/asound/card0/pcm6p/sub0/status 2>/dev/null"]
+      "echo __FE__; " +
+      "for n in pcm6p pcm6c; do " +
+      "  grep -m1 '^state' /proc/asound/card0/$n/sub0/status 2>/dev/null || echo 'state: closed'; " +
+      "done"]
     property var out: []
     property bool inActive: false
     property bool inFe: false
-    onRunningChanged: { out = []; inActive = false; inFe = false }
+    property var feLegs: [] // [pcm6p open, pcm6c open] for this tick
+    onRunningChanged: { out = []; inActive = false; inFe = false; feLegs = [] }
     stdout: SplitParser {
       onRead: data => {
         if (data.trim() === "__ACTIVE__") { rescan.inActive = true; return }
         if (data.trim() === "__FE__") { rescan.inActive = false; rescan.inFe = true; return }
         if (rescan.inFe) {
-          // "Them": the hostless voice FE only enters RUNNING when the
-          // network actually sends media — the one downlink observable
-          // Linux has on this SoC (amplitude never becomes host PCM).
+          // "Them": the voice path, not a host stream. The FE is hostless —
+          // no host pointer moves, the ADSP owns the session — so RUNNING is
+          // unreachable and keying on it reported "no audio" on every healthy
+          // call. PREPARED on pcm6p alone is not enough either: the kernel
+          // only starts the voice path when BOTH legs are open
+          // (q6voice_start: "we only start if both RX/TX are active",
+          // started != 3 -> return), so pcm6p alone cannot tell whether the
+          // path started, and the old check read "voice path open" through
+          // calls with no audible downlink.
+          //
+          // What is measured, without a mechanism: before 2026-09-15 the tx
+          // leg failed pcm_prepare persistently (EINVAL) while the far end
+          // still heard us; after a reboot it has prepared 8/8 calls. Cause
+          // unknown. SLIMBUS_2_TX was tested and falsified as a cause.
           var m = /^state:\s*(\S+)/.exec(data)
           if (m) {
-            var t = root.sessHist.concat([m[1] === "RUNNING" ? 1 : 0.08])
-            if (t.length > root.graphPoints) t = t.slice(t.length - root.graphPoints)
+            var legOpen = m[1] === "PREPARED" || m[1] === "RUNNING"
+            rescan.feLegs.push(legOpen)
+            if (rescan.feLegs.length < 2) return // wait for pcm6c
+            var both = rescan.feLegs[0] && rescan.feLegs[1]
+            var t = root.sessHist.concat([both ? 1 : 0.08])
+            if (t.length > root.sessPoints) t = t.slice(t.length - root.sessPoints)
             root.sessHist = t
             sessGraph.requestPaint()
           }
@@ -261,19 +320,28 @@ ShellRoot {
 
   // Recents: the watcher appends one JSON object per ended call to
   // ~/.local/state/fajita/calls.jsonl; this reads the tail.
+  //
+  // The rows accumulate into `acc` and are swapped into root.log ONCE on
+  // exit. Assigning root.log per line (the old shape) re-evaluated the
+  // recents Repeater's model on every row, so an N-line log cost O(N^2)
+  // delegate constructions: at 194 entries that blocked the main thread for
+  // seconds at startup and after every call ended, which the compositor
+  // reports as "org.quickshell is not responding".
   Process {
     id: logLoad
     running: false
-    command: ["bash", "-lc", "tail -n 200 ~/.local/state/fajita/calls.jsonl 2>/dev/null"]
-    onRunningChanged: if (running) root.log = []
+    command: ["bash", "-c", "tail -n 50 ~/.local/state/fajita/calls.jsonl 2>/dev/null"]
+    property var acc: []
+    onRunningChanged: if (running) logLoad.acc = []
     stdout: SplitParser {
       onRead: data => {
         try {
           var o = JSON.parse(data)
-          if (o && o.ts) root.log = root.log.concat(o)
+          if (o && o.ts) logLoad.acc.push(o)
         } catch (e) { /* partial or non-JSON line: skip */ }
       }
     }
+    onExited: root.log = logLoad.acc
   }
 
   // Poll while open: far-end answers/hangups arrive as state changes we do
@@ -287,7 +355,7 @@ ShellRoot {
 
   // Mic level over time, opt-in via the strip's chip: fajita-call-level
   // holds a persistent hw:0,1 capture (MultiMedia2, the bottom-mic path)
-  // and prints one dB-scaled 0-100 value per 0.5s, which becomes one bar.
+  // and prints one dB-scaled 0-100 value per 100ms, which becomes one point.
   // The voice FE itself is hostless and unreadable, and the earpiece leg
   // has no host tap at all, so the mic is the only measurable direction.
   // The capture shares SLIM TX7 with the voice uplink — it both contaminates
@@ -303,8 +371,11 @@ ShellRoot {
       onRead: data => {
         var n = parseInt(data.trim(), 10)
         if (isNaN(n)) return
+        // Muted: the network hears nothing, so the graph must too — pin the
+        // sample to zero instead of drawing your (still-captured) voice.
+        if (root.micMuted) n = 0
         var t = root.micHist.concat([n])
-        if (t.length > root.graphPoints) t = t.slice(t.length - root.graphPoints)
+        if (t.length > root.micPoints) t = t.slice(t.length - root.micPoints)
         root.micHist = t
         micGraph.requestPaint()
       }
@@ -368,8 +439,13 @@ ShellRoot {
     title: "calls"
     color: root.cBg
     visible: root.open
-    implicitWidth: 540
-    implicitHeight: 1080
+    // Size from the screen, never a literal: Qt reports logical pixels (540 x
+    // 1170 here; the panel is 1080 x 2340 at scale 2), and the hardcoded
+    // 540x1080 this replaced was already 90px short of the real height. The
+    // compositor tiles this window, so the implicit size is only a hint —
+    // but a hint that tracks the device instead of one build of one phone.
+    implicitWidth: Screen.width
+    implicitHeight: Screen.height
     // Any close path that hides the window (compositor close, menu Close
     // app) must not orphan a live call either — the ✕ button cannot be the
     // only one that hangs up. Idempotent with closeAndHangup. Clearing open
@@ -421,37 +497,39 @@ ShellRoot {
         // Two live graphs, same shape as the cellular panel's:
         //   "you"  — mic level over time (fajita-call-level capture, dB-scaled
         //            0..100). Moves while you are audible into the call.
-        //   "them" — the ADSP voice session. The hostless FE only enters
-        //            RUNNING when the network actually sends media, so the
-        //            line sits near zero until real call audio flows (its
-        //            amplitude is not tappable on this SoC — state is the
-        //            one honest downlink observable).
+        //   "them" — the ADSP voice session. The hostless FE is unreadable
+        //            (no amplitude, no RUNNING state on this SoC); the one
+        //            honest observable is whether q6voiced got the FE open,
+        //            which is the whole downlink path being wired.
         // The chip toggles only the mic capture ("you"); "them" is read-only.
         ColumnLayout {
           visible: root.calls.length > 0
           Layout.fillWidth: true
           spacing: 4
 
-          // "you" label + capture toggle sit directly above the mic graph.
+          // "you" label + meter toggle sit directly above the mic graph.
+          // "meter" toggles only the capture feeding the graph; muting is
+          // the separate "mute mic" button below — two controls, one label
+          // each, so they cannot be mistaken for each other.
           RowLayout {
             Layout.fillWidth: true
             spacing: 6
             Text {
-              text: "you"
-              color: root.levelOn ? root.cGreen : root.cMuted
+              text: root.micMuted ? "you (muted)" : "you"
+              color: root.micMuted ? root.cRed : (root.levelOn ? root.cGreen : root.cMuted)
               font.family: "JetBrainsMono Nerd Font"
-              font.pixelSize: 10
+              font.pixelSize: 11
             }
             Rectangle {
               id: levelChip
               Layout.preferredWidth: levelLbl.implicitWidth + 20
-              Layout.preferredHeight: 22
+              Layout.preferredHeight: 24
               radius: 6
               color: root.levelOn ? root.cAccent : root.cRow
               Text {
                 id: levelLbl
                 anchors.centerIn: parent
-                text: root.levelOn ? "mic on" : "mic off"
+                text: root.levelOn ? "meter ✓" : "meter"
                 color: root.levelOn ? root.cBg : root.cMuted
                 font.family: "JetBrainsMono Nerd Font"
                 font.pixelSize: 10
@@ -467,16 +545,20 @@ ShellRoot {
           Canvas {
             id: micGraph
             Layout.fillWidth: true
-            Layout.preferredHeight: 34
+            Layout.preferredHeight: 110
             onWidthChanged: requestPaint()
             onHeightChanged: requestPaint()
+            // Muted draws the flat line in the mute accent, not cMuted: a
+            // near-invisible grey line reads as a broken graph, not as gated.
             onPaint: root.paintSeries(this, root.micHist, 100,
-              root.levelOn ? String(root.cGreen) : String(root.cMuted))
+              !root.levelOn ? String(root.cMuted)
+                : root.micMuted ? String(root.cRed) : String(root.cGreen),
+              root.micPoints)
           }
 
-          // "them" label above its own graph, then the verdict caption: a
-          // flat line is the honest result (no media) and must not read as a
-          // broken graph.
+          // "them" label above its own graph, then the verdict caption: the
+          // line is a path-open indicator, not a level, so the caption says
+          // which it is — a flat low line means the FE never opened.
           Text {
             Layout.fillWidth: true
             text: "them"
@@ -487,18 +569,23 @@ ShellRoot {
           Canvas {
             id: sessGraph
             Layout.fillWidth: true
-            Layout.preferredHeight: 34
+            Layout.preferredHeight: 110
             onWidthChanged: requestPaint()
             onHeightChanged: requestPaint()
-            onPaint: root.paintSeries(this, root.sessHist, 1, String(root.cAccent))
+            onPaint: root.paintSeries(this, root.sessHist, 1,
+              String(root.cAccent), root.sessPoints)
           }
           Text {
             Layout.fillWidth: true
             horizontalAlignment: Text.AlignHCenter
+            // This is FE state, NOT media: both legs PREPARED only means the
+            // hostless voice PCM opened — it cannot see downlink samples, and
+            // it has read like this through calls with no audible audio. There
+            // is no host-visible downlink level on this hardware.
             text: (root.sessHist.length && root.sessHist[root.sessHist.length - 1] > 0.5)
-              ? "call audio flowing" : "no audio from network"
+              ? "voice FE prepared" : "voice FE down"
             color: (root.sessHist.length && root.sessHist[root.sessHist.length - 1] > 0.5)
-              ? root.cGreen : root.cMuted
+              ? root.cGreen : root.cRed
             font.family: "JetBrainsMono Nerd Font"
             font.pixelSize: 10
           }
@@ -579,6 +666,13 @@ ShellRoot {
 
             // Output picker: earpiece / speaker / wired headset. Pure AFE
             // mixer switching (fajita-call-route), applies mid-call.
+            //
+            // Speaker is order-sensitive, not broken: enabling
+            // "QUAT_MI2S_RX Voice Mixer VoiceMMode1" before q6voiced opens
+            // the voice rx makes that open fail EINVAL and the call has no
+            // downlink (measured: pcm6p stays closed). Tapping it here is
+            // always mid-call, so the FE is already open; the script guards
+            // the setup-time path anyway.
             RowLayout {
               Layout.fillWidth: true
               spacing: 8
@@ -625,8 +719,8 @@ ShellRoot {
               MouseArea {
                 anchors.fill: parent
                 onClicked: {
-                  root.micMuted = !root.micMuted
-                  root.run("fajita-call-route mic " + (root.micMuted ? "off" : "on"))
+                  root.setMic(!root.micMuted)
+                  micGraph.requestPaint() // color flips now, not on next sample
                 }
               }
             }
