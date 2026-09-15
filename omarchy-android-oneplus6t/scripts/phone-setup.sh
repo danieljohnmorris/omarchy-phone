@@ -219,6 +219,15 @@ ssh $PH 'sudo install -m755 -o root -g root /tmp/81voltd /usr/local/bin/81voltd
   sudo install -m644 -o root -g root /tmp/81voltd.service /etc/systemd/system/81voltd.service
   sudo systemctl daemon-reload; sudo systemctl enable --now 81voltd.service'
 
+# systemd-backlight restores the shutdown brightness verbatim, so a phone put
+# down dim boots to what looks like a dead screen (splash, then black, with
+# Hyprland running fine behind it) and there is no way to find the brightness
+# control on an invisible screen. This clamps the restored value to 20%.
+scp -q "$HERE/phone/fajita-backlight-floor.service" $PH:/tmp/
+ssh $PH 'sudo install -m644 -o root -g root /tmp/fajita-backlight-floor.service \
+    /etc/systemd/system/fajita-backlight-floor.service
+  sudo systemctl daemon-reload; sudo systemctl enable fajita-backlight-floor.service'
+
 # Call/SMS control from a seatless caller (ssh, systemd --user) needs polkit:
 # without this every mmcli voice/messaging op fails Unauthorized.
 scp -q "$HERE/phone/51-fajita-modem.rules" $PH:/tmp/

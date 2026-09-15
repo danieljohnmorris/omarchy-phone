@@ -244,28 +244,39 @@ ShellRoot {
     command: ["bash", "-c",
       "export PATH=\"$HOME/.local/bin:$PATH\"; " +
       "fajita-call list; echo __ACTIVE__; cat ~/.local/state/fajita/call-active 2>/dev/null; " +
-      "echo __FE__; { grep -m1 '^state' /proc/asound/card0/pcm6p/sub0/status 2>/dev/null " +
-      "|| echo 'state: closed'; }"]
+      "echo __FE__; " +
+      "for n in pcm6p pcm6c; do " +
+      "  grep -m1 '^state' /proc/asound/card0/$n/sub0/status 2>/dev/null || echo 'state: closed'; " +
+      "done"]
     property var out: []
     property bool inActive: false
     property bool inFe: false
-    onRunningChanged: { out = []; inActive = false; inFe = false }
+    property var feLegs: [] // [pcm6p open, pcm6c open] for this tick
+    onRunningChanged: { out = []; inActive = false; inFe = false; feLegs = [] }
     stdout: SplitParser {
       onRead: data => {
         if (data.trim() === "__ACTIVE__") { rescan.inActive = true; return }
         if (data.trim() === "__FE__") { rescan.inActive = false; rescan.inFe = true; return }
         if (rescan.inFe) {
-          // "Them": the hostless voice FE never enters RUNNING — no host
-          // pointer moves, the ADSP owns the session — so RUNNING is not a
-          // reachable state and keying on it reported "no audio" on every
-          // healthy call. What is observable: the FE is open (PREPARED) only
-          // when q6voiced's rx/tx open succeeded, i.e. the voice path is
-          // wired; a failed open (e.g. the old speaker route) leaves it
-          // "closed" with "Failed to open rx" in the q6voiced log.
+          // "Them": the voice path, not a host stream. The FE is hostless —
+          // no host pointer moves, the ADSP owns the session — so RUNNING is
+          // unreachable and keying on it reported "no audio" on every healthy
+          // call. PREPARED on pcm6p alone is not enough either: the kernel
+          // only starts the voice path when BOTH legs are open
+          // (q6voice_start: "we only start if both RX/TX are active",
+          // started != 3 -> return), so a prepared downlink with a failed
+          // uplink leg means no MVM/CVP session and no media in either
+          // direction, while the old check still read "voice path open".
+          // A tx leg that fails to prepare is the observed failure mode:
+          // measured 2026-09-15, the cause is ADSP state rot cleared only by
+          // a reboot, not a mixer (SLIMBUS_2_TX was falsified as a cause).
           var m = /^state:\s*(\S+)/.exec(data)
           if (m) {
-            var open = m[1] === "PREPARED" || m[1] === "RUNNING"
-            var t = root.sessHist.concat([open ? 1 : 0.08])
+            var legOpen = m[1] === "PREPARED" || m[1] === "RUNNING"
+            rescan.feLegs.push(legOpen)
+            if (rescan.feLegs.length < 2) return // wait for pcm6c
+            var both = rescan.feLegs[0] && rescan.feLegs[1]
+            var t = root.sessHist.concat([both ? 1 : 0.08])
             if (t.length > root.sessPoints) t = t.slice(t.length - root.sessPoints)
             root.sessHist = t
             sessGraph.requestPaint()
