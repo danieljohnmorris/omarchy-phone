@@ -8,8 +8,8 @@ The device folder README is the detailed journal; this file is the map.
 ## Layout
 
 - `README.md`: top-level overview, why ARM was the slow part.
-- `HANDOVER.md`: runbook for a fresh agent — build from scratch, flash,
-  deploy, plus the operational tips (ssh over the gadget NIC, screenshots,
+- `RUNBOOK.md`: runbook for a fresh agent — build from scratch, flash, deploy,
+  plus the operational tips (ssh over the gadget NIC, screenshots,
   reboot/rescue, ttfx/q6voiced builds, call-audio debugging).
 - `omarchy-android-oneplus6t/`: everything for fajita.
   - `README.md`: full device journal, read this before changing build or modem

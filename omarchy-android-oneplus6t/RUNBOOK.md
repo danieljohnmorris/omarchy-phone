@@ -1,4 +1,4 @@
-# HANDOVER — build & deploy omarchy-phone
+# RUNBOOK — build & deploy omarchy-phone
 
 For an agent on the Omarchy computer that must build
 `danieljohnmorris/omarchy-phone` (branch `phone-cellular`) from scratch and
@@ -6,11 +6,25 @@ flash + deploy it to a OnePlus 6T ("fajita"). Written 2026-09-15 from a live
 session; every command below was run on the real device unless marked
 UNTESTED.
 
-Paths are relative to the repo root (the directory containing this file,
-`AGENTS.md`, `README.md`, and `omarchy-android-oneplus6t/`). Secrets and
-connection details come from `omarchy-android-oneplus6t/config.env` — never
-commit or paste them. This doc deliberately contains no usernames, IPs, or
-phone numbers.
+Paths are relative to the repo root (`omarchy-android-oneplus6t/`'s parent).
+Secrets and connection details come from `omarchy-android-oneplus6t/config.env`
+— never commit or paste them. This doc deliberately contains no usernames,
+IPs, or phone numbers.
+
+## Current telephony state — READ FIRST (as of 2026-09-15)
+
+- **Uplink works**: a real mobile-terminated (incoming) call was answered on
+  the device and the far end heard the 6T's mic.
+- **Downlink is silent**: on that same call the caller was not audible at the
+  earpiece. This is the open problem.
+- `pcm6p`/`pcm6c` both `PREPARED` (the UI's "voice FE prepared") is
+  **plumbing only** — it cannot see downlink media and has read green through
+  calls with no audio. Never use it as evidence of audible audio.
+- The pmOS ALSA-state delta (`alsa-restore.service`/`alsa-state.service`
+  masked, `/var/lib/alsa/asound.state` removed; persisted in
+  `scripts/phone-setup.sh`) is deployed, but **its post-reboot incoming-call
+  test is still pending** — the phone vanished from USB before it could run.
+  That clean-boot retest is the first action on a live device.
 
 ## Suggested skills
 
@@ -19,16 +33,15 @@ phone numbers.
   regression.
 - `where-was-i` — this repo's state lives partly on the phone, partly in the
   tree; reconstruct before acting on a stale session.
-- `unlazy` — the verify-everything discipline this codebase expects
-  (on-device proof for every claim).
-- `caveman` — if the operator asks for terse output.
 
 ## 0. Prerequisites (Omarchy computer)
-
 - Docker Desktop running (Apple Silicon: arm64 containers run natively).
+- **x86_64 host only**: install arm64 binfmt/QEMU *before* the build container
+  — the rootfs build runs arm64 binaries: `docker run --privileged --rm
+  tonistiigi/binfmt --install arm64` (or distro `qemu-user-static`).
 - Android platform-tools: `adb` + `fastboot` on PATH (Linux `android-tools`
-  package, macOS `~/Library/Android/sdk/platform-tools`) — `flash.sh` falls
-  back to the macOS path and errors if neither exists.
+  package, macOS `~/Library/Android/sdk/platform-tools`) — `flash.sh` prefers
+  PATH, falls back to the macOS path, and errors if neither exists.
 - A **USB 2.0 cable** — fastboot on this device is unreliable over USB 3.
 - `git` on branch `phone-cellular`.
 
@@ -40,16 +53,26 @@ phone numbers.
 cd omarchy-android-oneplus6t
 mkdir -p work/pmos/x work/out
 
-# Arch Linux ARM base
+# Arch Linux ARM base (any current aarch64 tarball works)
 curl -LO https://dl.armmirror.com/archlinuxarm/os/ArchLinuxARM-aarch64-latest.tar.gz   # or os.archlinuxarm.org
 
-# pmOS packages: kernel, firmware, device package (apk = gzipped tarball).
-# Fetch each .apk, then extract each into its own dir under work/pmos/x/:
-for f in linux-postmarketos-qcom-sdm845-*.apk firmware-oneplus-sdm845-*.apk device-oneplus-fajita-*.apk; do
+# pmOS packages — use the VALIDATED v25.12 artifacts the device README pins,
+# not "latest": build-rootfs.sh blindly globs the FIRST match, so multiple
+# kernel/firmware versions in work/pmos/x make the build nondeterministic.
+# Keep exactly one of each (clear work/pmos/x before staging a different set).
+curl -LO https://mirror.postmarketos.org/postmarketos/v25.12/aarch64/linux-postmarketos-qcom-sdm845-6.16.7-r3.apk
+curl -LO https://mirror.postmarketos.org/postmarketos/v25.12/aarch64/firmware-oneplus-sdm845-10-r2.apk
+# The device-oneplus-fajita apk documents the device but is NOT consumed by
+# the build script.
+for f in linux-postmarketos-qcom-sdm845-*.apk firmware-oneplus-sdm845-*.apk; do
   d="work/pmos/x/${f%.apk}"; mkdir -p "$d"; tar -xzf "$f" -C "$d"
 done
-# build-rootfs.sh globs work/pmos/x/linux-postmarketos-qcom-sdm845-*/ and
-# work/pmos/x/firmware-oneplus-sdm845-<ver>*/ — keep the layout exact.
+# Verify all three inputs exist BEFORE starting Docker, using the SAME globs
+# build-rootfs.sh uses — it globs `linux-postmarketos-qcom-sdm845-*/lib/modules/`
+# and `firmware-oneplus-sdm845-[0-9]*/`, so those paths must resolve. If the
+# apk extracts as usr/lib/…, flatten until the glob matches.
+ls -d work/pmos/x/linux-postmarketos-qcom-sdm845-*/lib/modules \
+      work/pmos/x/firmware-oneplus-sdm845-[0-9]*/
 
 # arch=any Omarchy packages (the x86_64 repo's repackagable subset)
 # from https://pkgs.omarchy.org/x86_64 into work/opkgs/
@@ -154,12 +177,19 @@ can be current; verify freshness by the on-screen clock or a fresh md5.
 - Normal: `ssh "$P" 'sudo reboot'` (comes back in ~1 min).
 - Bootloader: from adb `adb reboot bootloader`, or hold **Power+VolUp+VolDown**
   (on-device prompt on `flash.sh unlock`).
-- Recovery/fastboot rescue: **Power+VolUp+VolDown held ~20–25 s**.
+- Rescue/fastboot when the screen is unusable: hold **Power+VolUp+VolDown
+  ~20–25 s**. (Power alone + VolUp also reaches bootloader, but the three-key
+  combo is the version proven on this device.)
 - Force power-off from Qualcomm crashdump/EDL-looking states: hold **Power
   ~10–12 s** until vibrate, then Power.
 - **No USB enumeration ≠ dead.** Check `ifconfig -l` for a renumbered NIC
   before assuming crashdump; also check `fastboot devices`. Crashdump mode
-  typically does not enumerate at all.
+  typically does not enumerate at all. If it IS crashdump: it usually followed
+  a reboot from ssh (`sudo reboot` has triggered it twice) — force power-off
+  and boot; no data is lost, but the kernel panic is. `pstore`/ramoops is
+  supposed to preserve that panic, yet every read here returned bit-rotted
+  text ("unrecoverable blocks") — treat the crashdump cause as unknown and
+  don't burn time on ramoops.
 - After any rescue boot, expect the RTC reset and a screen-blank phase —
   `fajita-backlight-floor.service` clamps restored brightness up to 20% at
   boot (reads `/sys/class/backlight/ae94000.dsi.0`).
@@ -191,8 +221,10 @@ was interrupted. Verify state first:
 ```sh
 # Voice FE legs — the kernel starts the voice path ONLY when BOTH are open
 ssh "$P" 'grep -H . /proc/asound/card0/pcm6{p,c}/sub0/status 2>/dev/null'
-# Both must print "state: PREPARED". If pcm6c is missing/SETUP, the session
-# is half-open and there is no call audio in either direction.
+# Both must print "state: PREPARED". pcm6c stuck at SETUP = half-open session.
+# NOTE: PREPARED is necessary but NOT sufficient — calls with both legs
+# PREPARED were still silent (downlink unproven), so this checks the session,
+# never the audio.
 
 # One-shot dump: verb, csets, PCM state
 ssh "$P" 'export PATH=$HOME/.local/bin:$PATH; fajita-call-audio-diag'
@@ -215,6 +247,17 @@ ssh "$P" 'for m in q6voice q6mvm q6cvp q6afe; do echo "module $m +p" | sudo tee 
   call. Route switches too.
 - The calls app graph label says `voice FE prepared` — that is FE state only,
   it CANNOT see downlink media. Do not treat it as audio evidence.
+- **TTY vs calls app:** `fajita-call start 123` from an ssh session creates
+  the modem call but the calls app may not be open/mapped to show it — Dan
+  will see "nothing dialed" while mmcli shows an active call. For flows the
+  user watches, open the app first (`fajita-app calls`, verify
+  `hyprctl clients` maps a "calls" window), dial via the UI, or at minimum
+  raise the app before dialing. Outgoing-in-app is UNTESTED — incoming calls
+  have been the verification path.
+- **Downlink acoustic test is hard:** the loudspeaker loopback needs a WAV +
+  `pw-play` to the HiFi Speaker sink (`pw-cat` silently fails on raw s16 —
+  a "control tone" that never played produced two days of false negatives).
+  Human-ear verdicts from Dan beat every rig tried so far.
 - Speaker route must be applied **after** the FE opens (watcher re-applies
   the saved route detached, ~3 s wait). QUAT_MI2S before the FE opens kills
   the downlink of that call.

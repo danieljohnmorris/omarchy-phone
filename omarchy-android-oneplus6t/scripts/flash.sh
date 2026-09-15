@@ -54,8 +54,8 @@ case "${1:-}" in
     else $FB -S 512M flash userdata "$OUT/rootfs.img"; fi
     echo "-> reboot"
     $FB reboot
-    echo "-> after ~30s a new USB ethernet interface appears on the Mac; phone is $PHONE_IP"
-    echo "   ssh $PHONE_SSH   (password: $PHONE_PASS)"
+    echo "-> after ~30s a new USB ethernet interface appears; phone is $PHONE_IP"
+    echo "   ssh $PHONE_SSH    (password: see config.env PHONE_PASS — not echoed here)"
     ;;
   *) echo "usage: $0 unlock|flash|boot-test"; exit 1;;
 esac
